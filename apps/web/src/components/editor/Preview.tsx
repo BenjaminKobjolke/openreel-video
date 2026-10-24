@@ -18,6 +18,7 @@ import {
   Monitor,
   Maximize2,
   Minimize2,
+  LayoutGrid,
   Move,
   ZoomIn,
   Proportions,
@@ -7514,8 +7515,12 @@ export const Preview: React.FC = () => {
         }
       };
 
-      window.addEventListener("mouseup", handleGlobalMouseUp);
-      return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+      window.addEventListener("pointerup", handleGlobalMouseUp);
+      window.addEventListener("pointercancel", handleGlobalMouseUp);
+      return () => {
+        window.removeEventListener("pointerup", handleGlobalMouseUp);
+        window.removeEventListener("pointercancel", handleGlobalMouseUp);
+      };
     }
   }, [
     interactionMode,
@@ -7683,8 +7688,8 @@ export const Preview: React.FC = () => {
         className={`flex-1 min-h-0 min-w-0 relative flex items-center justify-center bg-bg-1 transition-all duration-300 ${
           isMaximized || isFullscreen ? "p-0" : "p-[18px]"
         } ${zoomLevel > 1 ? "overflow-auto" : ""}`}
-        onMouseMove={interactionMode !== "none" ? handleMouseMove : undefined}
-        onMouseUp={handleMouseUp}
+        onPointerMove={interactionMode !== "none" ? handleMouseMove : undefined}
+        onPointerUp={handleMouseUp}
       >
         <div
           ref={overlayRef}
@@ -7800,7 +7805,7 @@ export const Preview: React.FC = () => {
           {/* Resize/Transform Overlay */}
           {!cropMode && showResizeHandles && clipBounds && (
             <div
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-none touch-none"
               style={{
                 left: clipBounds.x,
                 top: clipBounds.y,
@@ -7814,7 +7819,7 @@ export const Preview: React.FC = () => {
               {/* Move handle (center) */}
               <div
                 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-primary/80 rounded-full flex items-center justify-center cursor-move pointer-events-auto hover:bg-primary transition-colors"
-                onMouseDown={handleClipMouseDown}
+                onPointerDown={handleClipMouseDown}
                 title="Drag to move"
               >
                 <Move size={14} className="text-white" />
@@ -7837,37 +7842,37 @@ export const Preview: React.FC = () => {
               {/* Corner resize handles */}
               <div
                 className="absolute -left-2 -top-2 w-4 h-4 bg-white border-2 border-primary rounded-sm cursor-nw-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "nw")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "nw")}
               />
               <div
                 className="absolute -right-2 -top-2 w-4 h-4 bg-white border-2 border-primary rounded-sm cursor-ne-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "ne")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "ne")}
               />
               <div
                 className="absolute -left-2 -bottom-2 w-4 h-4 bg-white border-2 border-primary rounded-sm cursor-sw-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "sw")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "sw")}
               />
               <div
                 className="absolute -right-2 -bottom-2 w-4 h-4 bg-white border-2 border-primary rounded-sm cursor-se-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "se")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "se")}
               />
 
               {/* Edge resize handles */}
               <div
                 className="absolute left-1/2 -translate-x-1/2 -top-2 w-6 h-4 bg-white border-2 border-primary rounded-sm cursor-n-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "n")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "n")}
               />
               <div
                 className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-6 h-4 bg-white border-2 border-primary rounded-sm cursor-s-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "s")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "s")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-6 bg-white border-2 border-primary rounded-sm cursor-w-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "w")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "w")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-6 bg-white border-2 border-primary rounded-sm cursor-e-resize pointer-events-auto hover:bg-primary hover:border-white transition-colors"
-                onMouseDown={(e) => handleHandleMouseDown(e, "e")}
+                onPointerDown={(e) => handleHandleMouseDown(e, "e")}
               />
             </div>
           )}
@@ -7875,7 +7880,7 @@ export const Preview: React.FC = () => {
           {/* Text Clip Resize/Transform Overlay */}
           {showTextClipHandles && textClipBounds && (
             <div
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-none touch-none"
               style={{
                 left: textClipBounds.x,
                 top: textClipBounds.y,
@@ -7889,7 +7894,7 @@ export const Preview: React.FC = () => {
               {/* Move handle (center) */}
               <div
                 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-cyan-500/80 rounded-full flex items-center justify-center cursor-move pointer-events-auto hover:bg-cyan-500 transition-colors"
-                onMouseDown={handleTextClipMouseDown}
+                onPointerDown={handleTextClipMouseDown}
                 title="Drag to move text"
               >
                 <Move size={14} className="text-white" />
@@ -7912,37 +7917,37 @@ export const Preview: React.FC = () => {
               {/* Corner resize handles */}
               <div
                 className="absolute -left-2 -top-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-nw-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "nw")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "nw")}
               />
               <div
                 className="absolute -right-2 -top-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-ne-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "ne")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "ne")}
               />
               <div
                 className="absolute -left-2 -bottom-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-sw-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "sw")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "sw")}
               />
               <div
                 className="absolute -right-2 -bottom-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-se-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "se")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "se")}
               />
 
               {/* Edge resize handles */}
               <div
                 className="absolute left-1/2 -translate-x-1/2 -top-2 w-6 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-n-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "n")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "n")}
               />
               <div
                 className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-6 h-4 bg-white border-2 border-cyan-500 rounded-sm cursor-s-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "s")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "s")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-6 bg-white border-2 border-cyan-500 rounded-sm cursor-w-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "w")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "w")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-6 bg-white border-2 border-cyan-500 rounded-sm cursor-e-resize pointer-events-auto hover:bg-cyan-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleTextHandleMouseDown(e, "e")}
+                onPointerDown={(e) => handleTextHandleMouseDown(e, "e")}
               />
             </div>
           )}
@@ -7950,7 +7955,7 @@ export const Preview: React.FC = () => {
           {/* Shape Clip Resize/Transform Overlay */}
           {showShapeClipHandles && shapeClipBounds && (
             <div
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-none touch-none"
               style={{
                 left: shapeClipBounds.x,
                 top: shapeClipBounds.y,
@@ -7965,7 +7970,7 @@ export const Preview: React.FC = () => {
               {/* Move handle (center) */}
               <div
                 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-green-500/80 rounded-full flex items-center justify-center cursor-move pointer-events-auto hover:bg-green-500 transition-colors"
-                onMouseDown={handleShapeClipMouseDown}
+                onPointerDown={handleShapeClipMouseDown}
                 title="Drag to move shape"
               >
                 <Move size={14} className="text-white" />
@@ -7988,37 +7993,37 @@ export const Preview: React.FC = () => {
               {/* Corner resize handles */}
               <div
                 className="absolute -left-2 -top-2 w-4 h-4 bg-white border-2 border-green-500 rounded-sm cursor-nw-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "nw")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "nw")}
               />
               <div
                 className="absolute -right-2 -top-2 w-4 h-4 bg-white border-2 border-green-500 rounded-sm cursor-ne-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "ne")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "ne")}
               />
               <div
                 className="absolute -left-2 -bottom-2 w-4 h-4 bg-white border-2 border-green-500 rounded-sm cursor-sw-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "sw")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "sw")}
               />
               <div
                 className="absolute -right-2 -bottom-2 w-4 h-4 bg-white border-2 border-green-500 rounded-sm cursor-se-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "se")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "se")}
               />
 
               {/* Edge resize handles */}
               <div
                 className="absolute left-1/2 -translate-x-1/2 -top-2 w-6 h-4 bg-white border-2 border-green-500 rounded-sm cursor-n-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "n")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "n")}
               />
               <div
                 className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-6 h-4 bg-white border-2 border-green-500 rounded-sm cursor-s-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "s")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "s")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-6 bg-white border-2 border-green-500 rounded-sm cursor-w-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "w")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "w")}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-6 bg-white border-2 border-green-500 rounded-sm cursor-e-resize pointer-events-auto hover:bg-green-500 hover:border-white transition-colors"
-                onMouseDown={(e) => handleShapeHandleMouseDown(e, "e")}
+                onPointerDown={(e) => handleShapeHandleMouseDown(e, "e")}
               />
             </div>
           )}
@@ -8071,18 +8076,7 @@ export const Preview: React.FC = () => {
                 </div>
               );
             })}
-          {compact && !isMaximized && !isFullscreen && !cropMode && (
-            <button
-              type="button"
-              aria-label="Expand player"
-              className="absolute inset-0 z-30 w-full h-full cursor-pointer bg-transparent"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleMaximize();
-              }}
-            />
-          )}
-        </div>
+          </div>
         {exportState.isExporting && <ExportProgressOverlay progress={exportState.progress} phase={exportState.phase} width={videoAreaSize.width} height={videoAreaSize.height} />}
       </div>
 
@@ -8316,7 +8310,7 @@ export const Preview: React.FC = () => {
           />
           <IconButton
             label="Composition grid"
-            icon={<Move size={16} />}
+            icon={<LayoutGrid size={16} />}
             variant="ghost"
             size="sm"
             aria-pressed={showCompositionGrid}
