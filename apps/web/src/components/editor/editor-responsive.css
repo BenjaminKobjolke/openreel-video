@@ -19,6 +19,7 @@
 .editor-compact [data-preview-timecode] { min-width: 0; overflow: hidden; }
 .editor-compact [data-preview-timecode] input { width: 90px; }
 .editor-compact [data-preview-playback] { gap: 4px; margin: 0; }
+.editor-compact [data-preview-scrub] { height: 24px; padding-block: 9px; background-clip: content-box; }
 .editor-compact [data-preview-tools] { grid-column: 1 / -1; min-width: 0; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overflow-y: hidden; }
 .editor-compact [data-preview-tools] > * { flex-shrink: 0; }
 /* Keep dropdowns anchored to transport so the scrolling tools row cannot clip them. */
@@ -40,7 +41,7 @@
 .editor-compact .editor-touch-move { display: grid; position: absolute; left: 50%; top: 0; transform: translateX(-50%); height: 44px; width: 44px; z-index: 25; place-items: center; border-radius: 6px; background: rgba(0, 0, 0, .5); color: white; touch-action: none; }
 @media (max-height: 500px) {
   .editor-compact .editor-workspace { grid-template-rows: minmax(120px, 42%) minmax(0, 1fr) !important; }
-  .editor-compact [data-tour="preview"] > .shrink-0 { display: none; }
+  .editor-compact [data-tour="preview"]:not([data-player-expanded="true"]) > .shrink-0 { display: none; }
 }
 
 @media (max-width: 1100px), (pointer: coarse) {

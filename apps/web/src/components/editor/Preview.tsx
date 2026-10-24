@@ -6,21 +6,19 @@ import React, {
   useMemo,
 } from "react";
 import { PreviewTimecode } from "./PreviewTimecode";
+import { PreviewPlaybackButtons } from "./PreviewPlaybackButtons";
+import { PreviewScrubBar } from "./PreviewScrubBar";
 import { ExportProgressOverlay } from "./ExportProgressOverlay";
+import { useCompactEditor } from "../../hooks/useCompactEditor";
 import { useProjectFonts } from "../../hooks/useProjectFonts";
 import { formatFrameTimecode } from "../../utils/frame-timecode";
 import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
   Volume2,
   VolumeX,
   Monitor,
   Maximize2,
   Minimize2,
   Move,
-  Loader2,
   ZoomIn,
   Proportions,
   Magnet,
@@ -36,6 +34,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
 import { getEffectsBridge } from "../../bridges/effects-bridge";
+import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import {
   RendererFactory,
   getCaptionWrapWidth,
@@ -840,6 +839,7 @@ interface ClipWithPlaceholder {
 }
 
 export const Preview: React.FC = () => {
+  const compact = useCompactEditor();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoAreaRef = useRef<HTMLDivElement>(null);
@@ -995,6 +995,7 @@ export const Preview: React.FC = () => {
   const [, setRendererType] = useState<string>("none");
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const compactExpanded = compact && isMaximized;
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
@@ -7517,17 +7518,6 @@ export const Preview: React.FC = () => {
     updateClipTransform,
   ]);
 
-  const handleScrubClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percentage = Math.max(0, Math.min(1, x / rect.width));
-      const newTime = percentage * (actualEndTime || 10);
-      seekTo(newTime);
-    },
-    [actualEndTime, seekTo],
-  );
-
   const handleSkipBack = useCallback(() => {
     seekRelative(-5);
   }, [seekRelative]);
@@ -7579,8 +7569,6 @@ export const Preview: React.FC = () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const progressPercentage =
-    actualEndTime > 0 ? (playheadPosition / actualEndTime) * 100 : 0;
   const previewLoopRange = resolvePlaybackLoop(
     { loopEnabled: true, loopStart, loopEnd },
     actualEndTime,
@@ -7646,6 +7634,7 @@ export const Preview: React.FC = () => {
     <div
       ref={containerRef}
       data-tour="preview"
+      data-player-expanded={compactExpanded ? "true" : undefined}
       tabIndex={0}
       aria-label="Preview canvas"
       onKeyDown={handlePreviewKeyDown}
@@ -7655,15 +7644,29 @@ export const Preview: React.FC = () => {
           containerRef.current?.focus({ preventScroll: true });
         }
       }}
-      className="w-full h-full min-h-0 min-w-0 bg-stage-bg flex flex-col relative group overflow-hidden outline-none"
+      className={`${compactExpanded ? "fixed inset-0 z-[60]" : "relative"} w-full h-full min-h-0 min-w-0 bg-stage-bg flex flex-col group overflow-hidden outline-none`}
     >
       {/* ── Panel bar header (mockup: 'Player') ───────────────── */}
-      {!isMaximized && !isFullscreen && (
+      {!compact && !isMaximized && !isFullscreen && (
         <div className="flex items-center px-3.5 py-2 border-b border-border bg-bg-1 gap-2.5 min-h-[38px] shrink-0">
           <Text type="label" color="primary" weight="semibold" className="text-[13px] tracking-tight text-fg m-0">Player</Text>
           <div className="ml-auto flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-accent" title="Live preview" />
           </div>
+        </div>
+      )}
+
+      {compactExpanded && (
+        <div className="flex items-center justify-end px-3 py-2 border-b border-border bg-bg-1 shrink-0">
+          <IconButton
+            label="Minimize player"
+            title="Minimize player"
+            icon={<Minimize2 size={16} />}
+            variant="ghost"
+            size="sm"
+            onClick={handleMaximize}
+            className="w-[34px] h-[34px] grid place-items-center rounded-[7px]"
+          />
         </div>
       )}
 
@@ -8076,6 +8079,17 @@ export const Preview: React.FC = () => {
                 </div>
               );
             })}
+          {compact && !isMaximized && !isFullscreen && !cropMode && (
+            <button
+              type="button"
+              aria-label="Expand player"
+              className="absolute inset-0 z-30 w-full h-full cursor-pointer bg-transparent"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleMaximize();
+              }}
+            />
+          )}
         </div>
         {exportState.isExporting && <ExportProgressOverlay progress={exportState.progress} phase={exportState.phase} width={videoAreaSize.width} height={videoAreaSize.height} />}
       </div>
@@ -8089,68 +8103,49 @@ export const Preview: React.FC = () => {
         }`}
       >
         {/* Scrub Bar - integrated at top of controls */}
-        <div
-          className="h-1.5 bg-bg-2 cursor-pointer group hover:h-2.5 transition-all relative"
-          onClick={handleScrubClick}
-        >
-          <div
-            className="h-full bg-accent relative pointer-events-none shadow-glow"
-            style={{ width: `${progressPercentage}%` }}
-          >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity transform scale-0 group-hover:scale-100 duration-100 border border-black/20" />
-          </div>
-        </div>
+        <PreviewScrubBar
+          position={playheadPosition}
+          duration={actualEndTime}
+          onScrubStart={() => getPlaybackBridge().startScrubbing()}
+          onScrub={(time) => getPlaybackBridge().scrubTo(time)}
+          onScrubEnd={() => getPlaybackBridge().endScrubbing()}
+        />
 
         {/* Controls row */}
         <div data-preview-transport className="min-h-12 px-3 py-1 flex flex-wrap items-center gap-2">
-        <div data-preview-timecode className="flex items-center gap-2">
-          <PreviewTimecode position={playheadPosition} duration={actualEndTime} frameRate={settings.frameRate}
-            disabled={Boolean(playbackLockedReason) || exportState.isExporting} />
-        </div>
+        {!compact && (
+          <>
+            <div data-preview-timecode className="flex items-center gap-2">
+              <PreviewTimecode position={playheadPosition} duration={actualEndTime} frameRate={settings.frameRate}
+                disabled={Boolean(playbackLockedReason) || exportState.isExporting} />
+            </div>
 
-        <div data-preview-playback className="flex items-center gap-4 mx-auto">
-          <IconButton
-            label="Skip back 5s"
-            icon={<SkipBack size={18} />}
-            variant="ghost"
-            size="sm"
-            onClick={handleSkipBack}
-            className="w-8 h-8 grid place-items-center rounded-md text-fg-2 hover:bg-hover hover:text-fg transition-colors"
-          />
-          <IconButton
-            label={playbackLockedReason ?? (isPlaying ? "Pause" : "Play")}
-            icon={
-              isPlaying ? (
-                <Pause size={18} fill="currentColor" />
-              ) : playbackLockedReason ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Play size={18} fill="currentColor" className="ml-0.5" />
-              )
-            }
-            variant="ghost"
-            size="md"
-            onClick={() => {
-              togglePlayback();
-            }}
-            isDisabled={Boolean(playbackLockedReason)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              playbackLockedReason
-                ? "bg-bg-2 text-fg-muted cursor-not-allowed"
-                : "bg-bg-2 text-fg hover:bg-bg-3"
-            }`}
-          />
-          <IconButton
-            label="Skip forward 5s"
-            icon={<SkipForward size={18} />}
-            variant="ghost"
-            size="sm"
-            onClick={handleSkipForward}
-            className="w-8 h-8 grid place-items-center rounded-md text-fg-2 hover:bg-hover hover:text-fg transition-colors"
-          />
-        </div>
+            <PreviewPlaybackButtons
+              isPlaying={isPlaying}
+              playbackLockedReason={playbackLockedReason}
+              onSkipBack={handleSkipBack}
+              onTogglePlayback={togglePlayback}
+              onSkipForward={handleSkipForward}
+            />
+          </>
+        )}
 
         <div data-preview-tools className="flex gap-1.5 items-center">
+          {compact && (
+            <>
+              <PreviewPlaybackButtons
+                isPlaying={isPlaying}
+                playbackLockedReason={playbackLockedReason}
+                onSkipBack={handleSkipBack}
+                onTogglePlayback={togglePlayback}
+                onSkipForward={handleSkipForward}
+              />
+              <div data-preview-timecode className="flex items-center gap-2">
+                <PreviewTimecode position={playheadPosition} duration={actualEndTime} frameRate={settings.frameRate}
+                  disabled={Boolean(playbackLockedReason) || exportState.isExporting} />
+              </div>
+            </>
+          )}
           <IconButton
             label={loopEnabled ? "Disable preview loop" : "Enable preview loop"}
             title={`Loop ${formatFrameTimecode(previewLoopRange?.start ?? 0, settings.frameRate)} to ${formatFrameTimecode(previewLoopRange?.end ?? 0, settings.frameRate)} • I: mark start • O: mark end • Shift+L: toggle`}

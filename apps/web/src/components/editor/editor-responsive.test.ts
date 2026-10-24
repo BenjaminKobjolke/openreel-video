@@ -37,4 +37,16 @@ describe("editor-responsive.css", () => {
     expect(getRule(".editor-compact [data-preview-tools] > .relative")).toContain("position: static");
     expect(getRule(".editor-compact [data-preview-transport]")).toContain("position: relative");
   });
+
+  it("keeps expanded preview controls visible in landscape", () => {
+    const landscapeRule = getRule(
+      '.editor-compact [data-tour="preview"]:not([data-player-expanded="true"]) > .shrink-0',
+    );
+
+    expect(landscapeRule).toContain("display: none");
+  });
+
+  it("gives the compact scrub bar a 24px touch target", () => {
+    expect(getRule(".editor-compact [data-preview-scrub]")).toContain("padding-block: 9px");
+  });
 });
