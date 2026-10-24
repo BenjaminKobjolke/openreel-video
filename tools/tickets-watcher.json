@@ -11,10 +11,9 @@
     "restart.bat"
   ],
   "analysis_commands": [
-    {
-      "command": "tools/analyze_changed_and_new_files.bat",
-      "kind": "code_quality"
-    }
+    "pnpm test",
+    "pnpm --filter @openreel/studio test:e2e",
+    "tools/analyze_changed_and_new_files.bat"
   ],
   "analysis_commands_seen": {
     "scripts": [
@@ -23,5 +22,16 @@
     ],
     "tests": true
   },
-  "analysis_code_quality_answered": true
+  "analysis_code_quality_answered": true,
+  "analysis_command_states": {
+    "pnpm test": {
+      "test": "failed"
+    },
+    "pnpm --filter @openreel/studio test:e2e": {
+      "test": "failed"
+    },
+    "tools/analyze_changed_and_new_files.bat": {
+      "code_quality": "green"
+    }
+  }
 }
