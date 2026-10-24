@@ -11,6 +11,7 @@ import { registerServiceWorker } from "./services/service-worker";
 import { initCustomFonts } from "./components/editor/inspector/font-options";
 import { setEncoderBackendFactory } from "@openreel/core";
 import { NativeFFmpegBackend } from "./services/native-ffmpeg-backend";
+import { SyncKeyGate } from "./components/sync-gate/SyncKeyGate";
 
 const DesktopApp = React.lazy(() =>
   import("./desktop/DesktopApp").then((module) => ({
@@ -54,7 +55,9 @@ async function renderApplication(): Promise<void> {
 
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
-      <AstryxProvider>{application}</AstryxProvider>
+      <AstryxProvider>
+        <SyncKeyGate>{application}</SyncKeyGate>
+      </AstryxProvider>
     </React.StrictMode>,
   );
 }

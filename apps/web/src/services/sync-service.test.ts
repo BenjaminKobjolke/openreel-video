@@ -13,7 +13,15 @@ vi.mock("./project-package", () => ({
 }));
 
 import { useSettingsStore } from "../stores/settings-store";
-import { pushProject, SyncConflictError, isLinkedProject, findNewerServerVersion } from "./sync-service";
+import {
+  checkSyncKey,
+  findNewerServerVersion,
+  isLinkedProject,
+  pushProject,
+  SYNC_KEY_STATUS,
+  SyncAuthError,
+  SyncConflictError,
+} from "./sync-service";
 
 const project = {
   id: "proj-1",
@@ -94,5 +102,39 @@ describe("sync-service findNewerServerVersion", () => {
     mockList();
     expect(await findNewerServerVersion("proj-1")).toBeNull();
     expect(await findNewerServerVersion("other")).toBeNull();
+  });
+});
+
+describe("sync-service checkSyncKey", () => {
+  it("returns MISSING_SERVER_URL when the key is set but the desktop server URL is missing", async () => {
+    vi.stubGlobal("location", { protocol: "file:" });
+    useSettingsStore.setState({ syncServerUrl: "", syncToken: "tok" });
+
+    expect(await checkSyncKey()).toBe(SYNC_KEY_STATUS.MISSING_SERVER_URL);
+  });
+
+  it("returns MISSING_KEY when the server URL is configured without a key", async () => {
+    useSettingsStore.setState({ syncServerUrl: "http://pc:5180", syncToken: "" });
+
+    expect(await checkSyncKey()).toBe(SYNC_KEY_STATUS.MISSING_KEY);
+  });
+
+  it("returns OK when the server accepts the configured key", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+
+    expect(await checkSyncKey()).toBe(SYNC_KEY_STATUS.OK);
+  });
+
+  it("returns REJECTED when the server rejects the configured key", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+
+    expect(await checkSyncKey()).toBe(SYNC_KEY_STATUS.REJECTED);
+    await expect(pushProject(project)).rejects.toBeInstanceOf(SyncAuthError);
+  });
+
+  it("returns UNREACHABLE when the server cannot be reached", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+
+    expect(await checkSyncKey()).toBe(SYNC_KEY_STATUS.UNREACHABLE);
   });
 });

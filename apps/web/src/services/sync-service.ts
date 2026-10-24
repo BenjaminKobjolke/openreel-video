@@ -24,6 +24,23 @@ export class SyncConflictError extends Error {
   }
 }
 
+export class SyncAuthError extends Error {
+  constructor() {
+    super("The sync server rejected the token.");
+    this.name = "SyncAuthError";
+  }
+}
+
+export const SYNC_KEY_STATUS = {
+  OK: "OK",
+  MISSING_SERVER_URL: "MISSING_SERVER_URL",
+  MISSING_KEY: "MISSING_KEY",
+  REJECTED: "REJECTED",
+  UNREACHABLE: "UNREACHABLE",
+} as const;
+
+export type SyncKeyStatus = (typeof SYNC_KEY_STATUS)[keyof typeof SYNC_KEY_STATUS];
+
 const VERSIONS_KEY = "openreel-sync-versions";
 const AUTO_PUSH_DELAY_MS = 3000;
 
@@ -52,9 +69,14 @@ export function isLinkedProject(projectId: string): boolean {
   return projectId in readVersions();
 }
 
+function serverBase(): string {
+  const { syncServerUrl } = useSettingsStore.getState();
+  return (syncServerUrl || (location.protocol.startsWith("http") ? location.origin : "")).replace(/\/+$/, "");
+}
+
 function serverConfig(): { base: string; token: string } | null {
-  const { syncServerUrl, syncToken } = useSettingsStore.getState();
-  const base = (syncServerUrl || (location.protocol.startsWith("http") ? location.origin : "")).replace(/\/+$/, "");
+  const { syncToken } = useSettingsStore.getState();
+  const base = serverBase();
   return base && syncToken ? { base, token: syncToken } : null;
 }
 
@@ -69,7 +91,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${config.token}` },
   });
-  if (response.status === 401) throw new Error("The sync server rejected the token.");
+  if (response.status === 401) throw new SyncAuthError();
   return response;
 }
 
@@ -81,6 +103,19 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function listServerProjects(): Promise<ServerProject[]> {
   return requestJson<ServerProject[]>("/projects");
+}
+
+/** Checks whether the configured sync key is accepted by the server. */
+export async function checkSyncKey(): Promise<SyncKeyStatus> {
+  if (!serverBase()) return SYNC_KEY_STATUS.MISSING_SERVER_URL;
+  if (!useSettingsStore.getState().syncToken) return SYNC_KEY_STATUS.MISSING_KEY;
+
+  try {
+    await listServerProjects();
+    return SYNC_KEY_STATUS.OK;
+  } catch (error) {
+    return error instanceof SyncAuthError ? SYNC_KEY_STATUS.REJECTED : SYNC_KEY_STATUS.UNREACHABLE;
+  }
 }
 
 /** The server entry when another device pushed this linked project since this device last synced it. */
