@@ -1,6 +1,6 @@
 import "../../test/install-local-storage-mock";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Project } from "@openreel/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
@@ -85,20 +85,41 @@ function seedClip(opts: {
   return seeded;
 }
 
-describe("InspectorPanel (no tabs, collapsible sections by clip type)", () => {
+describe("InspectorPanel (section navigation by clip type)", () => {
   afterEach(() => {
     cleanup();
     useUIStore.getState().clearSelection();
     useProjectStore.setState({ project: createEmptyProject("Reset") });
   });
 
-  it("renders collapsible sections, not a tab bar", () => {
-    seedClip({ mediaId: "media-vid", trackType: "video" });
+  it("renders a section jump bar above collapsible sections", () => {
+    seedClip({ mediaId: "media-img", trackType: "image" });
     const { container } = render(<InspectorPanel />);
-    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Inspector tabs" })).toBeTruthy();
     expect(
       container.querySelector('[data-section-id="transform"]'),
     ).not.toBeNull();
+  });
+
+  it("jumping to Animate opens the Keyframes section", async () => {
+    seedClip({ mediaId: "media-img", trackType: "image" });
+    const { container } = render(<InspectorPanel />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /Animate/ }));
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-section-id="keyframes"]'),
+      ).toHaveAttribute("data-collapsed", "false");
+    });
+  });
+
+  it("audio clips show only Audio and AI jump buttons", () => {
+    seedClip({ mediaId: "media-audio", trackType: "audio" });
+    render(<InspectorPanel />);
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(["Audio", "AI"]);
   });
 
   it("the Transform section is a collapsible with a toggle header", () => {

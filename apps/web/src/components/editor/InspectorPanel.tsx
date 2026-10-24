@@ -41,6 +41,7 @@ import {
   type InspectorClipType,
 } from "./inspector/clip-tabs.config";
 import { InspectorClipHeader } from "./inspector/shell/InspectorClipHeader";
+import { InspectorGroupNav } from "./inspector/shell/InspectorGroupNav";
 import { InspectorTabErrorBoundary } from "./inspector/shell/InspectorTabErrorBoundary";
 import { InspectorSection } from "./inspector/shell/InspectorSection";
 import { ColorTab } from "./inspector/tabs/ColorTab";
@@ -187,39 +188,31 @@ export const InspectorPanel: React.FC = () => {
     return subtitleSelection?.id || null;
   }, [selectedItems]);
 
-  const selectedSubtitle = useMemo(() => {
-    if (!selectedSubtitleId) return null;
-    return getSubtitle(selectedSubtitleId) || null;
-  }, [selectedSubtitleId, getSubtitle, project.timeline.subtitles]);
+  const selectedSubtitle = selectedSubtitleId
+    ? getSubtitle(selectedSubtitleId) || null
+    : null;
 
   const selectedTransitionId = useMemo(() => {
     return selectedItems.find((item) => item.type === "transition")?.id ?? null;
   }, [selectedItems]);
 
-  const selectedTransition = useMemo(() => {
-    if (!selectedTransitionId) return null;
-    return getClipTransition(selectedTransitionId) ?? null;
-  }, [selectedTransitionId, getClipTransition, project.modifiedAt]);
+  const selectedTransition = selectedTransitionId
+    ? getClipTransition(selectedTransitionId) ?? null
+    : null;
 
-  const transitionClipA = useMemo(
-    () => (selectedTransition ? getClip(selectedTransition.clipAId) ?? null : null),
-    [selectedTransition, getClip, project.modifiedAt],
-  );
-  const transitionClipB = useMemo(
-    () =>
-      selectedTransition?.clipBId
-        ? getClip(selectedTransition.clipBId) ?? null
-        : null,
-    [selectedTransition, getClip, project.modifiedAt],
-  );
+  const transitionClipA = selectedTransition
+    ? getClip(selectedTransition.clipAId) ?? null
+    : null;
+  const transitionClipB = selectedTransition?.clipBId
+    ? getClip(selectedTransition.clipBId) ?? null
+    : null;
 
-  const selectedTimelineClip = useMemo(() => {
-    if (selectedClipIds.length !== 1) return null;
-    return getClip(selectedClipIds[0]) || null;
-  }, [getClip, project.modifiedAt, selectedClipIds]);
+  const selectedTimelineClip = selectedClipIds.length === 1
+    ? getClip(selectedClipIds[0]) || null
+    : null;
 
   // Get selected clip (check regular clips, text clips, and shape clips)
-  const selectedClip = useMemo(() => {
+  const selectedClip = (() => {
     if (selectedClipIds.length !== 1) return null;
     const clipId = selectedClipIds[0];
     const titleEngine = getTitleEngine();
@@ -309,13 +302,7 @@ export const InspectorPanel: React.FC = () => {
       };
     }
     return getClip(clipId) ?? null;
-  }, [
-    selectedClipIds,
-    getClip,
-    getTitleEngine,
-    getGraphicsEngine,
-    project.modifiedAt,
-  ]);
+  })();
 
   // Force re-render trigger - increment to force recalculation of engine values
   const [updateCounter, forceUpdate] = React.useReducer((x) => x + 1, 0);
@@ -851,6 +838,7 @@ export const InspectorPanel: React.FC = () => {
     () => getTabIdsForClipType(clipType as InspectorClipType | null),
     [clipType],
   );
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
@@ -871,8 +859,16 @@ export const InspectorPanel: React.FC = () => {
           typeLabel={clipType ?? "clip"}
         />
       )}
+      {selectedClip && selectedClipIds.length === 1 && tabIds.length > 0 && (
+        <InspectorGroupNav
+          key={clipId}
+          tabIds={tabIds}
+          clipId={clipId}
+          containerRef={scrollRef}
+        />
+      )}
 
-      <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+      <div ref={scrollRef} className="overflow-y-auto flex-1 min-h-0 custom-scrollbar">
       <div className="py-[18px] px-5">
         {selectedTimelineClip && selectedClipIds.length === 1 && (
           <QuickEditBar clipId={selectedTimelineClip.id} onCleanAudio={handleEnhanceAudio} isCleaningAudio={isEnhancingAudio} />
@@ -890,104 +886,120 @@ export const InspectorPanel: React.FC = () => {
           <InspectorTabErrorBoundary key={clipId}>
             <div className="space-y-4">
               {tabIds.includes("transform") && (
-                <TransformTab
-                  clipId={clipId}
-                  clipType={clipType}
-                  selectedClip={selectedClip}
-                  showTransformControls={showTransformControls}
-                  showVideoControls={showVideoControls}
-                  transform={transform}
-                  canvasWidth={project.settings.width}
-                  canvasHeight={project.settings.height}
-                  handleTransformChange={handleTransformChange}
-                />
+                <div data-inspector-group="transform" className="space-y-4">
+                  <TransformTab
+                    clipId={clipId}
+                    clipType={clipType}
+                    selectedClip={selectedClip}
+                    showTransformControls={showTransformControls}
+                    showVideoControls={showVideoControls}
+                    transform={transform}
+                    canvasWidth={project.settings.width}
+                    canvasHeight={project.settings.height}
+                    handleTransformChange={handleTransformChange}
+                  />
+                </div>
               )}
 
               {tabIds.includes("style") && (
-                <StyleTab
-                  clipId={clipId}
-                  showTextSection={showTextSection}
-                  showShapeSection={showShapeSection}
-                  showSVGSection={showSVGSection}
-                />
+                <div data-inspector-group="style" className="space-y-4">
+                  <StyleTab
+                    clipId={clipId}
+                    showTextSection={showTextSection}
+                    showShapeSection={showShapeSection}
+                    showSVGSection={showSVGSection}
+                  />
+                </div>
               )}
 
               {tabIds.includes("color") && (
-                <ColorTab clipId={clipId} showColorGrading={showColorGrading} />
+                <div data-inspector-group="color" className="space-y-4">
+                  <ColorTab clipId={clipId} showColorGrading={showColorGrading} />
+                </div>
               )}
 
               {tabIds.includes("effects") && (
-                <EffectsTab
-                  clipId={clipId}
-                  clipType={clipType}
-                  selectedClip={selectedClip}
-                  selectedTimelineClip={selectedTimelineClip}
-                  showVideoControls={showVideoControls}
-                  showVideoEffects={showVideoEffects}
-                  showTextSection={showTextSection}
-                  appliedEditingTemplates={appliedEditingTemplates}
-                  getEditingTemplate={getEditingTemplate}
-                  removeEditingTemplateApplication={removeEditingTemplateApplication}
-                  expandedRecipeApplicationId={expandedRecipeApplicationId}
-                  setExpandedRecipeApplicationId={setExpandedRecipeApplicationId}
-                  recipeControlValues={recipeControlValues}
-                  setRecipeControlValues={setRecipeControlValues}
-                  handleRecipeControlChange={handleRecipeControlChange}
-                  handleToggleRecipeControls={handleToggleRecipeControls}
-                  handleResetRecipeControls={handleResetRecipeControls}
-                  handleUpdateRecipeControls={handleUpdateRecipeControls}
-                  chromaKeyEnabled={chromaKeyEnabled}
-                  keyColor={keyColor}
-                  tolerance={tolerance}
-                  handleChromaKeyToggle={handleChromaKeyToggle}
-                  handleKeyColorChange={handleKeyColorChange}
-                  handleToleranceChange={handleToleranceChange}
-                />
+                <div data-inspector-group="effects" className="space-y-4">
+                  <EffectsTab
+                    clipId={clipId}
+                    clipType={clipType}
+                    selectedClip={selectedClip}
+                    selectedTimelineClip={selectedTimelineClip}
+                    showVideoControls={showVideoControls}
+                    showVideoEffects={showVideoEffects}
+                    showTextSection={showTextSection}
+                    appliedEditingTemplates={appliedEditingTemplates}
+                    getEditingTemplate={getEditingTemplate}
+                    removeEditingTemplateApplication={removeEditingTemplateApplication}
+                    expandedRecipeApplicationId={expandedRecipeApplicationId}
+                    setExpandedRecipeApplicationId={setExpandedRecipeApplicationId}
+                    recipeControlValues={recipeControlValues}
+                    setRecipeControlValues={setRecipeControlValues}
+                    handleRecipeControlChange={handleRecipeControlChange}
+                    handleToggleRecipeControls={handleToggleRecipeControls}
+                    handleResetRecipeControls={handleResetRecipeControls}
+                    handleUpdateRecipeControls={handleUpdateRecipeControls}
+                    chromaKeyEnabled={chromaKeyEnabled}
+                    keyColor={keyColor}
+                    tolerance={tolerance}
+                    handleChromaKeyToggle={handleChromaKeyToggle}
+                    handleKeyColorChange={handleKeyColorChange}
+                    handleToleranceChange={handleToleranceChange}
+                  />
+                </div>
               )}
 
               {tabIds.includes("audio") && (
-                <AudioTab
-                  clipId={clipId}
-                  clipType={clipType}
-                  showAudioEffects={showAudioEffects}
-                  noiseReductionSectionTitle={noiseReductionSectionTitle}
-                  selectedNoiseReductionEffect={selectedNoiseReductionEffect}
-                />
+                <div data-inspector-group="audio" className="space-y-4">
+                  <AudioTab
+                    clipId={clipId}
+                    clipType={clipType}
+                    showAudioEffects={showAudioEffects}
+                    noiseReductionSectionTitle={noiseReductionSectionTitle}
+                    selectedNoiseReductionEffect={selectedNoiseReductionEffect}
+                  />
+                </div>
               )}
 
               {tabIds.includes("speed") && (
-                <SpeedTab
-                  showVideoControls={showVideoControls}
-                  selectedClip={selectedClip}
-                />
+                <div data-inspector-group="speed" className="space-y-4">
+                  <SpeedTab
+                    showVideoControls={showVideoControls}
+                    selectedClip={selectedClip}
+                  />
+                </div>
               )}
 
               {tabIds.includes("animate") && (
-                <AnimateTab
-                  clipId={clipId}
-                  clipType={clipType}
-                  showTextSection={showTextSection}
-                />
+                <div data-inspector-group="animate" className="space-y-4">
+                  <AnimateTab
+                    clipId={clipId}
+                    clipType={clipType}
+                    showTextSection={showTextSection}
+                  />
+                </div>
               )}
 
               {tabIds.includes("ai") && (
-                <AiTab
-                  clipId={clipId}
-                  clipType={clipType}
-                  showVideoControls={showVideoControls}
-                  showAudioEffects={showAudioEffects}
-                  showVideoEffects={showVideoEffects}
-                  handleSRTImport={handleSRTImport}
-                  srtInputRef={srtInputRef}
-                  handleRemoveBackground={handleRemoveBackground}
-                  handleEnhanceAudio={handleEnhanceAudio}
-                  handleAutoColor={handleAutoColor}
-                  isEnhancingAudio={isEnhancingAudio}
-                  audioEnhanced={audioEnhanced}
-                  isApplyingSelectedClipEffect={isApplyingSelectedClipEffect}
-                  captionWordsPerLine={captionWordsPerLine}
-                  onCaptionWordsPerLineChange={setCaptionWordsPerLine}
-                />
+                <div data-inspector-group="ai" className="space-y-4">
+                  <AiTab
+                    clipId={clipId}
+                    clipType={clipType}
+                    showVideoControls={showVideoControls}
+                    showAudioEffects={showAudioEffects}
+                    showVideoEffects={showVideoEffects}
+                    handleSRTImport={handleSRTImport}
+                    srtInputRef={srtInputRef}
+                    handleRemoveBackground={handleRemoveBackground}
+                    handleEnhanceAudio={handleEnhanceAudio}
+                    handleAutoColor={handleAutoColor}
+                    isEnhancingAudio={isEnhancingAudio}
+                    audioEnhanced={audioEnhanced}
+                    isApplyingSelectedClipEffect={isApplyingSelectedClipEffect}
+                    captionWordsPerLine={captionWordsPerLine}
+                    onCaptionWordsPerLineChange={setCaptionWordsPerLine}
+                  />
+                </div>
               )}
             </div>
           </InspectorTabErrorBoundary>
