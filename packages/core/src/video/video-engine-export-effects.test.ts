@@ -214,6 +214,7 @@ describe("VideoEngine export frame effects", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.effectsApply.mockReset();
     mocks.effectsInitialize.mockResolvedValue(true);
     mocks.colorGradingInitialize.mockReturnValue(undefined);
 
