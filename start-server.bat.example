@@ -1,7 +1,7 @@
 @echo off
 rem Starts the OpenReel sync server (apps/sync-server) for desktop + phone.
 rem Restart while running: tools\restart.bat server
-rem Builds the web app into apps\sync-server\web-dist on first run, or when called as: start-server.bat build
+rem Builds the web app into apps\sync-server\web-dist on every start and on tools\restart.bat server
 rem Copy this file to start-server.bat (gitignored) and set your own token there.
 rem Enter the same token in Settings > Sync on each device.
 cd /d "%~dp0"
@@ -11,14 +11,13 @@ rem Keep the data outside any web server root so it cannot be served without the
 set OPENREEL_SYNC_DATA=%USERPROFILE%\.openreel\sync-data
 set OPENREEL_SYNC_WEB=%~dp0apps\sync-server\web-dist
 
-if /i "%~1"=="build" goto build
-if not exist "%OPENREEL_SYNC_WEB%\index.html" goto build
-goto run
+rem The supervisor re-runs this file with "serve", so a restart rebuilds too.
+if /i "%~1"=="serve" goto serve
+echo Token: %OPENREEL_SYNC_TOKEN%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\supervise.ps1" server start-server.bat serve
+exit /b
 
-:build
+:serve
 call pnpm --filter @openreel/web exec vite build --outDir "%OPENREEL_SYNC_WEB%" --emptyOutDir
 if errorlevel 1 exit /b 1
-
-:run
-echo Token: %OPENREEL_SYNC_TOKEN%
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\supervise.ps1" server pnpm --filter @openreel/sync-server start
+pnpm --filter @openreel/sync-server start
