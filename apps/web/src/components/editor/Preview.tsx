@@ -1369,6 +1369,11 @@ export const Preview: React.FC = () => {
     [settings.width, settings.height, playbackQuality],
   );
 
+  const rendererInitialSizeRef = useRef({
+    width: previewRes.width,
+    height: previewRes.height,
+  });
+
   const previewFrameSize = useMemo(() => {
     if (videoAreaSize.width <= 0 || videoAreaSize.height <= 0) {
       return { width: 0, height: 0 };
@@ -1545,20 +1550,15 @@ export const Preview: React.FC = () => {
   );
 
   const particleEngine = React.useMemo(() => getParticleEngine(), []);
-  const [particleUpdateTrigger, setParticleUpdateTrigger] = React.useState(
-    () => particleEngine.getChangeVersion()
+  const [particleEffects, setParticleEffects] = React.useState(
+    () => particleEngine.getAllEffects()
   );
 
   React.useEffect(() => {
-    const unsubscribe = particleEngine.onEffectsChange(() => {
-      setParticleUpdateTrigger(particleEngine.getChangeVersion());
+    return particleEngine.onEffectsChange(() => {
+      setParticleEffects(particleEngine.getAllEffects());
     });
-    return unsubscribe;
   }, [particleEngine]);
-
-  const particleEffects = React.useMemo(() => {
-    return particleEngine.getAllEffects();
-  }, [particleEngine, particleUpdateTrigger]);
 
   // Calculate the actual end time for playback (where clips actually end)
   // This needs to recalculate whenever the timeline changes
@@ -1600,11 +1600,15 @@ export const Preview: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const decoderCache = decoderCacheRef.current;
+    const nativeVideoCache = nativeVideoCacheRef.current;
+    const nativeImageBitmapCache = nativeImageBitmapCacheRef.current;
+
     return () => {
-      for (const entry of decoderCacheRef.current.values()) {
+      for (const entry of decoderCache.values()) {
         entry.input[Symbol.dispose]?.();
       }
-      decoderCacheRef.current.clear();
+      decoderCache.clear();
 
       releaseScrubVideoElements();
 
@@ -1620,17 +1624,17 @@ export const Preview: React.FC = () => {
       }
       currentVideoMediaIdRef.current = null;
 
-      for (const [, entry] of nativeVideoCacheRef.current) {
+      for (const [, entry] of nativeVideoCache) {
         releaseVideoElement(entry);
       }
-      nativeVideoCacheRef.current.clear();
+      nativeVideoCache.clear();
 
-      for (const [, bitmap] of nativeImageBitmapCacheRef.current) {
+      for (const [, bitmap] of nativeImageBitmapCache) {
         bitmap.close();
       }
-      nativeImageBitmapCacheRef.current.clear();
+      nativeImageBitmapCache.clear();
     };
-  }, [releaseScrubVideoElements]);
+  }, [releaseScrubVideoElements, releaseVideoElement]);
 
   // Set canvas internal resolution ONLY when project settings change
   // This follows the WebGPU best practice of keeping internal resolution fixed
@@ -1671,8 +1675,8 @@ export const Preview: React.FC = () => {
         const factory = RendererFactory.getInstance();
         const renderer = await factory.createRenderer({
           canvas,
-          width: previewRes.width,
-          height: previewRes.height,
+          width: rendererInitialSizeRef.current.width,
+          height: rendererInitialSizeRef.current.height,
           preferredRenderer: isWebGPUSupported() ? "webgpu" : "canvas2d",
         });
 
@@ -3199,7 +3203,9 @@ export const Preview: React.FC = () => {
           lastGoodFrameRef.current = await createImageBitmap(
             offscreenCanvasRef.current,
           );
-        } catch {}
+        } catch {
+          // Snapshot failures are recoverable; keep the already-rendered frame.
+        }
         return true;
       }
 
@@ -3555,8 +3561,6 @@ export const Preview: React.FC = () => {
     [
       timelineTracks,
       getMediaItem,
-      allTextClips,
-      allShapeClips,
       getResolvedClipAudioEffects,
       clipMasksById,
       mediaClipHasAudio,
@@ -4385,7 +4389,9 @@ export const Preview: React.FC = () => {
         try {
           lastGoodFrameRef.current?.close();
           lastGoodFrameRef.current = await createImageBitmap(canvas);
-        } catch {}
+        } catch {
+          // Snapshot failures are recoverable; keep the already-rendered frame.
+        }
 
         rafId = requestAnimationFrame(() => {
           drawFrame();
@@ -4540,7 +4546,7 @@ export const Preview: React.FC = () => {
       return results.length > 0 ? results[0] : null;
     };
 
-    const startPlaybackForClip = async (
+    const _startPlaybackForClip = async (
       clip: (typeof timelineTracksRef.current)[0]["clips"][0],
       _track: (typeof timelineTracksRef.current)[0],
       timelinePosition: number,
@@ -4551,7 +4557,7 @@ export const Preview: React.FC = () => {
           const clipEndTime = clip.startTime + clip.duration;
           const nextResult = findClipAtTime(clipEndTime);
           if (nextResult && clipEndTime < actualEndTime && isActive) {
-            startPlaybackForClip(
+            _startPlaybackForClip(
               nextResult.clip,
               nextResult.track,
               clipEndTime,
@@ -4656,8 +4662,6 @@ export const Preview: React.FC = () => {
           let currentMediaTime = mediaStartTime;
           let currentPlayheadTime = timelinePosition;
           let lastFrameTimestamp = performance.now();
-          let frameCount = 0;
-
           const processNextFrame = async () => {
             if (!isActive) {
               input[Symbol.dispose]?.();
@@ -4674,7 +4678,7 @@ export const Preview: React.FC = () => {
 
                 if (nextResult && clipEndTime < actualEndTime && isActive) {
                   setPlayheadPosition(clipEndTime);
-                  startPlaybackForClip(
+                  _startPlaybackForClip(
                     nextResult.clip,
                     nextResult.track,
                     clipEndTime,
@@ -4696,8 +4700,6 @@ export const Preview: React.FC = () => {
                   } | null>;
                 }
               ).getCanvas(currentMediaTime);
-
-              frameCount++;
 
               if (!frameResult || !frameResult.canvas) {
                 console.warn("[Preview] No frame at time", currentMediaTime);
@@ -5124,7 +5126,6 @@ export const Preview: React.FC = () => {
 
       const frameDuration = editingFrameDuration;
       let lastFrameTimestamp = performance.now();
-      let frameCount = 0;
       let isProcessingFrame = false;
 
       const processMultiTrackFrame = async () => {
@@ -5254,7 +5255,6 @@ export const Preview: React.FC = () => {
           );
           if (hasActiveCompound) {
             await renderFrameDirectlyRef.current(currentPlayhead);
-            frameCount++;
             masterClock.reportVideoTime(currentPlayhead);
             const now = performance.now();
             const elapsed = now - lastFrameTimestamp;
@@ -5460,7 +5460,6 @@ export const Preview: React.FC = () => {
 
                   mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
 
-                  frameCount++;
                   masterClock.reportVideoTime(currentPlayhead);
                   const nowTr = performance.now();
                   if (
@@ -5879,7 +5878,9 @@ export const Preview: React.FC = () => {
             try {
               lastGoodFrameRef.current?.close();
               lastGoodFrameRef.current = await createImageBitmap(offscreenCanvasRef.current!);
-            } catch {}
+            } catch {
+              // Snapshot failures are recoverable; keep the already-rendered frame.
+            }
           } else if (lastGoodFrameRef.current) {
             ctx.drawImage(
               lastGoodFrameRef.current,
@@ -5906,7 +5907,6 @@ export const Preview: React.FC = () => {
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
           }
 
-          frameCount++;
           masterClock.reportVideoTime(currentPlayhead);
           const now = performance.now();
           const elapsed = now - lastFrameTimestamp;
@@ -6273,6 +6273,8 @@ export const Preview: React.FC = () => {
     const overlay = overlayRef.current;
     const overlayRect = overlay.getBoundingClientRect();
     const canvasRect = canvas.getBoundingClientRect();
+    const canvasDisplayWidth = canvasRect.width || canvasSize.width;
+    const canvasDisplayHeight = canvasRect.height || canvasSize.height;
 
     const clipTransform = clip.transform || {
       position: { x: 0, y: 0 },
@@ -6294,7 +6296,7 @@ export const Preview: React.FC = () => {
     const canvasHeight = settings.height;
 
     const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
+    const elementAspect = canvasDisplayWidth / canvasDisplayHeight;
 
     let actualWidth: number;
     let actualHeight: number;
@@ -6302,13 +6304,13 @@ export const Preview: React.FC = () => {
     let letterboxOffsetY = 0;
 
     if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
+      actualHeight = canvasDisplayHeight;
       actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
+      letterboxOffsetX = (canvasDisplayWidth - actualWidth) / 2;
     } else {
-      actualWidth = canvasRect.width;
+      actualWidth = canvasDisplayWidth;
       actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
+      letterboxOffsetY = (canvasDisplayHeight - actualHeight) / 2;
     }
 
     const displayScale = actualWidth / canvasWidth;
@@ -6386,6 +6388,8 @@ export const Preview: React.FC = () => {
     const overlay = overlayRef.current;
     const overlayRect = overlay.getBoundingClientRect();
     const canvasRect = canvas.getBoundingClientRect();
+    const canvasDisplayWidth = canvasRect.width || canvasSize.width;
+    const canvasDisplayHeight = canvasRect.height || canvasSize.height;
 
     const { transform, style, text } = selectedTextClip;
 
@@ -6393,7 +6397,7 @@ export const Preview: React.FC = () => {
     const canvasHeight = settings.height;
 
     const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
+    const elementAspect = canvasDisplayWidth / canvasDisplayHeight;
 
     let actualWidth: number;
     let actualHeight: number;
@@ -6401,13 +6405,13 @@ export const Preview: React.FC = () => {
     let letterboxOffsetY = 0;
 
     if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
+      actualHeight = canvasDisplayHeight;
       actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
+      letterboxOffsetX = (canvasDisplayWidth - actualWidth) / 2;
     } else {
-      actualWidth = canvasRect.width;
+      actualWidth = canvasDisplayWidth;
       actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
+      letterboxOffsetY = (canvasDisplayHeight - actualHeight) / 2;
     }
 
     const displayScale = actualWidth / canvasWidth;
@@ -6643,7 +6647,7 @@ export const Preview: React.FC = () => {
       displayScale,
       isShapeClip: true,
     };
-  }, [selectedShapeClip, settings.width, settings.height, canvasSize]);
+  }, [selectedShapeClip, settings.width, settings.height]);
 
   const getGraphicClipDisplayBounds = useCallback(
     (clip: ShapeClip | SVGClip | StickerClip) => {
@@ -6835,7 +6839,6 @@ export const Preview: React.FC = () => {
     selectedSubtitleObj,
     settings.width,
     settings.height,
-    canvasSize,
     playheadPosition,
   ]);
 
@@ -7419,6 +7422,9 @@ export const Preview: React.FC = () => {
       textClipBounds,
       activeTextClip,
       updateTextTransform,
+      activeShapeClip,
+      shapeClipBounds,
+      updateShapeTransform,
     ],
   );
 
@@ -7653,20 +7659,6 @@ export const Preview: React.FC = () => {
           <div className="ml-auto flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-accent" title="Live preview" />
           </div>
-        </div>
-      )}
-
-      {compactExpanded && (
-        <div className="flex items-center justify-end px-3 py-2 border-b border-border bg-bg-1 shrink-0">
-          <IconButton
-            label="Minimize player"
-            title="Minimize player"
-            icon={<Minimize2 size={16} />}
-            variant="ghost"
-            size="sm"
-            onClick={handleMaximize}
-            className="w-[34px] h-[34px] grid place-items-center rounded-[7px]"
-          />
         </div>
       )}
 
