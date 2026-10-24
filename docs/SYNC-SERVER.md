@@ -49,16 +49,17 @@ projects in `~/.openreel/claude-edit` and downloads only when the server version
 ### Desktop app
 
 1. Start the server, then start the app (`start.bat`).
-2. Open **Settings → Sync**. Enter the URL `http://localhost:5180` and the token, then click **Test connection**.
+2. On the start page, enter the URL `http://localhost:5180` and the token, then click **Continue**.
    - Use `localhost`, not the LAN IP. The renderer runs on `app://openreel`, and Chromium treats `localhost` as trustworthy.
 3. Open a project and click **Sync → Save to server** in the title bar. This links the project. The same **Sync** menu lists **Server projects**.
+4. **Settings → Sync** can still be used to edit the server URL and token later.
 
 ### Phone
 
 1. Open `http://<PC-IP>:5180` on the same Wi-Fi.
-2. In the editor, tap **Media**, then the star icon (**More editor actions**), then **Settings & API keys → Sync**.
-3. Paste the token. Leave the URL empty, because it defaults to the page's own address.
-4. **Server projects** appears in two places: on the welcome screen and in the project-name menu in the top bar. Tap a project to open it.
+2. On the start page, paste the token. Leave the server URL empty, because it defaults to the page's own address.
+3. **Server projects** appears in two places: on the welcome screen and in the project-name menu in the top bar. Tap a project to open it.
+4. **Settings → Sync** can still be used to edit the token later.
 
 ### Day to day
 
