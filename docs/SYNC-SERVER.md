@@ -14,8 +14,8 @@ Phone browser ------------http://<PC-IP>:5180/---------> same server (web app + 
 Requires Node 23.6 or later, because the server runs its TypeScript sources directly (`node src/cli.ts`).
 
 ```bat
-start-server.bat          rem start (builds the web app on first run)
-start-server.bat build    rem rebuild the web app, then start
+start-server.bat          rem build the web app, then start
+tools\restart.bat server  rem rebuild the web app and restart the running server
 ```
 
 `start-server.bat` lives in the repo root and is gitignored because it holds the token. It sets:
