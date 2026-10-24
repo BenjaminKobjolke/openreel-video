@@ -68,6 +68,7 @@ const useAutoSave = () => {
 
 /**
  * Main Editor Interface — v2 cinematic layout.
+ * In compact mode, the toolbar moves to the bottom bar.
  *
  * Grid (per mockup):
  *
@@ -355,13 +356,25 @@ export const EditorInterface: React.FC = () => {
         gridTemplateAreas:
           "'media mh stage ih inspector' 'th th th th th' 'timeline timeline timeline timeline timeline'",
       };
+  const tabsNav = (
+    <nav aria-label="Editor workspace" className="contents">
+      {([
+        ["timeline", "Timeline"], ["media", "Media"], ["inspector", "Edit"], ["chat", "AI"],
+      ] as const).map(([panel, label]) => (
+        <button key={panel} type="button" aria-controls={`editor-panel-${panel}`} aria-pressed={compactPanel === panel}
+          onClick={() => openCompactPanel(panel)} className={compactPanel === panel ? "text-accent bg-accent/10" : "text-fg-muted"}>
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
 
   return (
     <div
       ref={rootRef}
       className={`editor-shell w-full h-full bg-bg text-fg overflow-hidden font-sans select-none relative z-20 flex flex-col ${compact ? "editor-compact" : ""}`}
     >
-      <Toolbar />
+      <Toolbar compactTabs={compact ? tabsNav : undefined} />
 
       <div className="editor-body flex-1 min-h-0 flex">
         <div className="editor-rail" hidden={compact && compactPanel !== "media"}><EditorActionRail /></div>
@@ -523,19 +536,6 @@ export const EditorInterface: React.FC = () => {
         </div>
       </div>
       </div>
-
-      {compact && (
-        <nav aria-label="Editor workspace" className="editor-workspace-tabs">
-          {([
-            ["timeline", "Timeline"], ["media", "Media"], ["inspector", "Edit"], ["chat", "AI"],
-          ] as const).map(([panel, label]) => (
-            <button key={panel} type="button" aria-controls={`editor-panel-${panel}`} aria-pressed={compactPanel === panel}
-              onClick={() => openCompactPanel(panel)} className={compactPanel === panel ? "text-accent bg-accent/10" : "text-fg-muted"}>
-              {label}
-            </button>
-          ))}
-        </nav>
-      )}
 
       <KeyboardShortcutsOverlay
         isOpen={showShortcutsOverlay}

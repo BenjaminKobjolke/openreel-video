@@ -9,6 +9,11 @@ vi.mock("./ProjectPackageDialog", () => ({ ProjectPackageDialog: () => { throw n
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("project menu loading", () => {
+  it("uses a short trigger label in compact mode", () => {
+    render(<ProjectSwitcher compact />);
+    expect(screen.getByRole("button", { name: "Project" })).toBeInTheDocument();
+  });
+
   it("contains a failed backup dialog without unmounting the editor", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     render(<><div>Editor still available</div><ProjectSwitcher /></>);

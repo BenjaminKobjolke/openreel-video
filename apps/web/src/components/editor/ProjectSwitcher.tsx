@@ -39,7 +39,7 @@ function formatTimeAgo(timestamp: number): string {
   return `${days}d ago`;
 }
 
-export const ProjectSwitcher: React.FC = () => {
+export const ProjectSwitcher: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { project, createNewProject, recoverFromAutoSave, renameProject } = useProjectStore();
   const [isOpen, setIsOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<AutoSaveMetadata[]>([]);
@@ -131,7 +131,7 @@ export const ProjectSwitcher: React.FC = () => {
         label="Project menu"
         isOpen={isOpen}
         onOpenChange={(open) => { setIsOpen(open); if (!open) setIsEditing(false); }}
-        placement="below"
+        placement={compact ? "above" : "below"}
         alignment="start"
         className="!w-[min(320px,calc(100vw-24px))] border-border bg-bg-1 shadow-xl"
         content={
@@ -289,7 +289,7 @@ export const ProjectSwitcher: React.FC = () => {
         }
       >
         <Button
-          label={project.name}
+          label={compact ? "Project" : project.name}
           variant="ghost"
           size="md"
           icon={<FileVideo className="h-4 w-4 shrink-0 text-primary" aria-hidden />}

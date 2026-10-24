@@ -10,7 +10,7 @@ vi.mock("../../hooks/useEditorInitialization", () => ({
 vi.mock("../../hooks/useKeyboardShortcuts", () => ({
   useKeyboardShortcuts: () => ({ showShortcutsOverlay: false, setShowShortcutsOverlay: vi.fn() }),
 }));
-vi.mock("./Toolbar", () => ({ Toolbar: () => <header>Toolbar</header> }));
+vi.mock("./Toolbar", () => ({ Toolbar: ({ compactTabs }: { compactTabs?: React.ReactNode }) => <header>{compactTabs ?? "Toolbar"}</header> }));
 vi.mock("./EditorActionRail", () => ({ EditorActionRail: () => <nav>Tools</nav> }));
 vi.mock("./AssetsPanel", () => ({ AssetsPanel: () => <input aria-label="Media search" /> }));
 vi.mock("./InspectorPanel", () => ({ InspectorPanel: () => <input aria-label="Clip title" /> }));

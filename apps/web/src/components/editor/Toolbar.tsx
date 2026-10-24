@@ -49,7 +49,7 @@ type ExportType =
   | "1080p-60"
   | "project";
 
-export const Toolbar: React.FC = () => {
+export const Toolbar: React.FC<{ compactTabs?: React.ReactNode }> = ({ compactTabs }) => {
   const project = useProjectStore((state) => state.project);
   const loopStart = useTimelineStore((state) => state.loopStart);
   const loopEnd = useTimelineStore((state) => state.loopEnd);
@@ -379,8 +379,131 @@ export const Toolbar: React.FC = () => {
     },
   ];
 
+  const exportMenuContent = (
+    <>
+      <div className="space-y-1 max-h-[400px] overflow-y-auto">
+        {exportOptions.map((option, index) =>
+          option.separator ? (
+            <div key={`sep-${index}`} className="my-1 border-t border-border" />
+          ) : (
+            <DropdownMenuItem
+              key={option.type + index}
+              icon={<Icon name={option.iconName} size={18} ariaHidden />}
+              label={
+                <div className="flex items-center gap-2">
+                  <Text
+                    type="label"
+                    weight="bold"
+                    className={option.recommended ? "text-accent" : "text-fg"}
+                  >
+                    {option.label}
+                  </Text>
+                  {option.recommended && (
+                    <Text type="supporting" className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] text-accent">
+                      Best match
+                    </Text>
+                  )}
+                </div>
+              }
+              description={
+                <div>
+                  <Text type="supporting" color="secondary" display="block">
+                    {option.desc}
+                  </Text>
+                  {exportEstimates.get(option.type) && (
+                    <Text type="supporting" color="secondary" display="block" className="text-[10px]">
+                      Est. {exportEstimates.get(option.type)?.formatted}
+                    </Text>
+                  )}
+                </div>
+              }
+              className={option.recommended ? "bg-accent-soft" : undefined}
+              onClick={() => handleExport(option.type)}
+            />
+          ),
+        )}
+
+        <div className="my-1 border-t border-border" />
+        <DropdownMenuItem
+          icon={<Settings size={18} aria-hidden />}
+          label="Custom export..."
+          description="Full settings with AI upscaling"
+          endContent={<MoreHorizontal size={14} className="text-fg-muted" aria-hidden />}
+          onClick={openExportDialog}
+        />
+        <DropdownMenuItem
+          icon={<Video size={18} aria-hidden />}
+          label="Compress video..."
+          description="Shrink any video to a target size"
+          onClick={() => setIsCompressOpen(true)}
+        />
+      </div>
+      <Text type="supporting" color="secondary" display="block" className="border-t border-border bg-bg-2 px-3 py-2.5 text-center text-xs">
+        {project.settings.width}×{project.settings.height} •{" "}
+        {project.settings.frameRate}fps
+      </Text>
+    </>
+  );
+
+  const exportStatus = exportState.isExporting ? (
+    <button
+      type="button"
+      onClick={handleCancelExport}
+      className="flex items-center gap-1.5 rounded-[8px] bg-bg-3 px-[18px] py-[9px] text-[13px] font-semibold text-fg-2"
+    >
+      <Icon name="square.and.arrow.up" size={13} ariaHidden />
+      {`${Math.round(exportState.progress)}%`}
+      <Icon name="xmark" size={11} ariaHidden />
+    </button>
+  ) : exportState.error ? (
+    <button
+      type="button"
+      onClick={resetError}
+      className="flex max-w-[180px] items-center gap-1.5 truncate rounded-[8px] bg-destructive px-[18px] py-[9px] text-[13px] font-semibold text-destructive-foreground"
+    >
+      <span className="truncate">{exportState.error}</span>
+      <Icon name="xmark" size={11} ariaHidden />
+    </button>
+  ) : exportState.complete ? (
+    <button
+      type="button"
+      disabled
+      className="flex items-center gap-1.5 rounded-[8px] bg-bg-3 px-[18px] py-[9px] text-[13px] font-semibold text-fg-2"
+    >
+      <Icon name="checkmark" size={13} ariaHidden />
+      Saved!
+    </button>
+  ) : null;
+
   return (
-    <header className="h-[60px] flex items-center gap-2 px-2 sm:gap-[18px] sm:px-[18px] bg-bg-1 border-b border-border shrink-0 z-30 relative">
+    <header className={compactTabs ? "editor-workspace-tabs order-last" : "h-[60px] flex items-center gap-2 px-2 sm:gap-[18px] sm:px-[18px] bg-bg-1 border-b border-border shrink-0 z-30 relative"}>
+      {compactTabs ? (
+        <>
+          {compactTabs}
+          <ProjectSwitcher compact />
+          <div className="min-w-0 flex items-center justify-center overflow-hidden">
+            {exportStatus ?? (
+              <DropdownMenu
+                isMenuOpen={isExportOpen}
+                onOpenChange={setIsExportOpen}
+                hasChevron={false}
+                placement="above"
+                alignment="end"
+                menuWidth={288}
+                button={{
+                  label: "Export",
+                  variant: "primary",
+                  size: "sm",
+                  icon: <Icon name="square.and.arrow.up" size={13} ariaHidden />,
+                }}
+              >
+                {exportMenuContent}
+              </DropdownMenu>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
 
       <div role="group" aria-label="Editing mode" className="flex shrink-0 rounded-lg bg-bg-3 p-1 text-xs">
         <button type="button" aria-pressed={!aiMode} className={`rounded-md px-3 py-1.5 ${!aiMode ? "bg-bg-1 text-fg" : "text-fg-muted"}`} onClick={() => useUIStore.getState().setPanelVisible("agentChat", false)}>Manual</button>
@@ -414,35 +537,7 @@ export const Toolbar: React.FC = () => {
       {/* ─── Right: export only ───────────────────────────────── */}
       <div className="flex items-center justify-end shrink-0">
         {/* Export */}
-        {exportState.isExporting ? (
-          <button
-            type="button"
-            onClick={handleCancelExport}
-            className="flex items-center gap-1.5 rounded-[8px] bg-bg-3 px-[18px] py-[9px] text-[13px] font-semibold text-fg-2"
-          >
-            <Icon name="square.and.arrow.up" size={13} ariaHidden />
-            {`${Math.round(exportState.progress)}%`}
-            <Icon name="xmark" size={11} ariaHidden />
-          </button>
-        ) : exportState.error ? (
-          <button
-            type="button"
-            onClick={resetError}
-            className="flex max-w-[180px] items-center gap-1.5 truncate rounded-[8px] bg-destructive px-[18px] py-[9px] text-[13px] font-semibold text-destructive-foreground"
-          >
-            <span className="truncate">{exportState.error}</span>
-            <Icon name="xmark" size={11} ariaHidden />
-          </button>
-        ) : exportState.complete ? (
-          <button
-            type="button"
-            disabled
-            className="flex items-center gap-1.5 rounded-[8px] bg-bg-3 px-[18px] py-[9px] text-[13px] font-semibold text-fg-2"
-          >
-            <Icon name="checkmark" size={13} ariaHidden />
-            Saved!
-          </button>
-        ) : (
+        {exportStatus ?? (
           <div className="flex items-stretch">
             <button
               type="button"
@@ -487,71 +582,14 @@ export const Toolbar: React.FC = () => {
               }}
               menuWidth={288}
             >
-              <div className="space-y-1 max-h-[400px] overflow-y-auto">
-                {exportOptions.map((option, index) =>
-                  option.separator ? (
-                    <div key={`sep-${index}`} className="my-1 border-t border-border" />
-                  ) : (
-                    <DropdownMenuItem
-                      key={option.type + index}
-                      icon={<Icon name={option.iconName} size={18} ariaHidden />}
-                      label={
-                        <div className="flex items-center gap-2">
-                          <Text
-                            type="label"
-                            weight="bold"
-                            className={option.recommended ? "text-accent" : "text-fg"}
-                          >
-                            {option.label}
-                          </Text>
-                          {option.recommended && (
-                            <Text type="supporting" className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] text-accent">
-                              Best match
-                            </Text>
-                          )}
-                        </div>
-                      }
-                      description={
-                        <div>
-                          <Text type="supporting" color="secondary" display="block">
-                            {option.desc}
-                          </Text>
-                          {exportEstimates.get(option.type) && (
-                            <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-                              Est. {exportEstimates.get(option.type)?.formatted}
-                            </Text>
-                          )}
-                        </div>
-                      }
-                      className={option.recommended ? "bg-accent-soft" : undefined}
-                      onClick={() => handleExport(option.type)}
-                    />
-                  ),
-                )}
-
-                <div className="my-1 border-t border-border" />
-                <DropdownMenuItem
-                  icon={<Settings size={18} aria-hidden />}
-                  label="Custom export..."
-                  description="Full settings with AI upscaling"
-                  endContent={<MoreHorizontal size={14} className="text-fg-muted" aria-hidden />}
-                  onClick={openExportDialog}
-                />
-                <DropdownMenuItem
-                  icon={<Video size={18} aria-hidden />}
-                  label="Compress video..."
-                  description="Shrink any video to a target size"
-                  onClick={() => setIsCompressOpen(true)}
-                />
-              </div>
-              <Text type="supporting" color="secondary" display="block" className="border-t border-border bg-bg-2 px-3 py-2.5 text-center text-xs">
-                {project.settings.width}×{project.settings.height} •{" "}
-                {project.settings.frameRate}fps
-              </Text>
+              {exportMenuContent}
             </DropdownMenu>
           </div>
         )}
       </div>
+
+        </>
+      )}
 
       {/* ─── Auxiliary popups & dialogs ───────────────────────── */}
       <CompressDialog
