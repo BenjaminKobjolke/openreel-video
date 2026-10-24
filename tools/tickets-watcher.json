@@ -31,7 +31,7 @@
       "test": "failed"
     },
     "tools/analyze_changed_and_new_files.bat": {
-      "code_quality": "green"
+      "code_quality": "failed"
     }
   }
 }
