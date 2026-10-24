@@ -1,0 +1,18 @@
+{
+  "files": {
+    "TICKETS_WATCHER_COMMANDS.md": 2
+  },
+  "command_check_scripts": [
+    "graphify_update.bat",
+    "restart.bat"
+  ],
+  "analysis_commands": [],
+  "analysis_commands_seen": {
+    "scripts": [
+      "graphify_update.bat",
+      "restart.bat"
+    ],
+    "tests": true
+  },
+  "analysis_code_quality_answered": true
+}
