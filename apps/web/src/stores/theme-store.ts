@@ -27,8 +27,8 @@ const calculateIsDark = (mode: ThemeMode): boolean => {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      mode: "light",
-      isDark: false,
+      mode: "auto",
+      isDark: calculateIsDark("auto"),
 
       setMode: (mode: ThemeMode) => {
         const isDark = calculateIsDark(mode);
