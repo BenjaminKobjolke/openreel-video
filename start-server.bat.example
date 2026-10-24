@@ -1,5 +1,6 @@
 @echo off
 rem Starts the OpenReel sync server (apps/sync-server) for desktop + phone.
+rem Restart while running: tools\restart.bat server
 rem Builds the web app into apps\sync-server\web-dist on first run, or when called as: start-server.bat build
 rem Copy this file to start-server.bat (gitignored) and set your own token there.
 rem Enter the same token in Settings > Sync on each device.
@@ -20,4 +21,4 @@ if errorlevel 1 exit /b 1
 
 :run
 echo Token: %OPENREEL_SYNC_TOKEN%
-call pnpm --filter @openreel/sync-server start
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\supervise.ps1" server pnpm --filter @openreel/sync-server start
