@@ -30,7 +30,8 @@ export function ToolcraftDialog({
       <DialogContent
         hideCloseButton
         className={cn(
-          "!p-0 gap-0 overflow-hidden border-border bg-bg-1 text-fg shadow-xl",
+          // Keep long content from expanding the grid and size it to the visible mobile viewport.
+          "!p-0 gap-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh_-_32px)] overflow-x-hidden overflow-y-auto border-border bg-bg-1 text-fg shadow-xl",
           className,
         )}
         style={{
@@ -118,7 +119,7 @@ export function ToolcraftLayout({
   header,
 }: ToolcraftLayoutProps) {
   return (
-    <div className={cn("flex max-h-[90vh] min-h-0 flex-col", className)}>
+    <div className={cn("flex max-h-[90dvh] min-h-0 flex-col", className)}>
       {header}
       {content ?? children}
       {footer}
