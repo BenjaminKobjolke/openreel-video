@@ -60,6 +60,7 @@ import {
   type StickerClip,
   type Subtitle,
   type Track,
+  getClipLocalTime,
   type MotionAsset,
   type Mask,
   type AdjustmentLayer,
@@ -6266,6 +6267,16 @@ export const Preview: React.FC = () => {
 
   const activeTextClip = selectedTextClip;
 
+  const getTransformAtPlayhead = useCallback(
+    (clip: PreviewClip): ClipTransform =>
+      getAnimatedTransform(
+        (clip.transform as ClipTransform) || DEFAULT_TRANSFORM,
+        clip.keyframes,
+        getClipLocalTime(clip, playheadPosition),
+      ),
+    [playheadPosition],
+  );
+
   const clipBounds = useMemo(() => {
     const clip = selectedClip || clipAtPlayhead;
     if (!clip || !canvasRef.current || !overlayRef.current) return null;
@@ -6277,13 +6288,7 @@ export const Preview: React.FC = () => {
     const canvasDisplayWidth = canvasRect.width || canvasSize.width;
     const canvasDisplayHeight = canvasRect.height || canvasSize.height;
 
-    const clipTransform = clip.transform || {
-      position: { x: 0, y: 0 },
-      scale: { x: 1, y: 1 },
-      rotation: 0,
-      opacity: 1,
-      anchor: { x: 0.5, y: 0.5 },
-    };
+    const clipTransform = getTransformAtPlayhead(clip);
 
     const transform = liveTransform
       ? {
@@ -6379,6 +6384,7 @@ export const Preview: React.FC = () => {
     canvasSize,
     liveTransform,
     getMediaItem,
+    getTransformAtPlayhead,
   ]);
 
   const textClipBounds = useMemo(() => {
@@ -6506,11 +6512,12 @@ export const Preview: React.FC = () => {
             .find((candidate) => candidate.id === item.id);
           if (!clip) continue;
           changed = true;
+          const transform = getTransformAtPlayhead(clip);
           pending.push(
             updateClipTransform(item.id, {
               position: {
-                x: clip.transform.position.x + pixelX,
-                y: clip.transform.position.y + pixelY,
+                x: transform.position.x + pixelX,
+                y: transform.position.y + pixelY,
               },
             }),
           );
@@ -6555,6 +6562,7 @@ export const Preview: React.FC = () => {
       allTextClips,
       beginHistoryGroup,
       endHistoryGroup,
+      getTransformAtPlayhead,
       selectedItems,
       settings.height,
       settings.width,
@@ -6851,13 +6859,7 @@ export const Preview: React.FC = () => {
       const clip = selectedClip || clipAtPlayhead;
       if (!clip) return;
 
-      const transform = clip.transform || {
-        position: { x: 0, y: 0 },
-        scale: { x: 1, y: 1 },
-        rotation: 0,
-        opacity: 1,
-        anchor: { x: 0.5, y: 0.5 },
-      };
+      const transform = getTransformAtPlayhead(clip);
 
       isInteractingRef.current = true;
       setInteractionMode("resize");
@@ -6873,7 +6875,7 @@ export const Preview: React.FC = () => {
         },
       };
     },
-    [selectedClip, clipAtPlayhead],
+    [selectedClip, clipAtPlayhead, getTransformAtPlayhead],
   );
 
   const handleClipMouseDown = useCallback(
@@ -6884,13 +6886,7 @@ export const Preview: React.FC = () => {
       const clip = selectedClip || clipAtPlayhead;
       if (!clip) return;
 
-      const transform = clip.transform || {
-        position: { x: 0, y: 0 },
-        scale: { x: 1, y: 1 },
-        rotation: 0,
-        opacity: 1,
-        anchor: { x: 0.5, y: 0.5 },
-      };
+      const transform = getTransformAtPlayhead(clip);
 
       isInteractingRef.current = true;
       setInteractionMode("move");
@@ -6905,7 +6901,7 @@ export const Preview: React.FC = () => {
         },
       };
     },
-    [selectedClip, clipAtPlayhead],
+    [selectedClip, clipAtPlayhead, getTransformAtPlayhead],
   );
 
   const handleTextClipMouseDown = useCallback(

@@ -8,6 +8,7 @@ import { useEngineStore } from "../../stores/engine-store";
 import type { Transform, EditingTemplatePrimitive } from "@openreel/core";
 import {
   ChromaKeyEngine,
+  getClipLocalTime,
   getMediaItemCapabilities,
   type CaptionAnimationStyle,
   CAPTION_ANIMATION_STYLES,
@@ -47,6 +48,7 @@ import { InspectorSection } from "./inspector/shell/InspectorSection";
 import { ColorTab } from "./inspector/tabs/ColorTab";
 import { AudioTab } from "./inspector/tabs/AudioTab";
 import { TransformTab } from "./inspector/tabs/TransformTab";
+import { getAnimatedTransform } from "./preview/canvas-renderers";
 import { SpeedTab } from "./inspector/tabs/SpeedTab";
 import { AnimateTab } from "./inspector/tabs/AnimateTab";
 import { StyleTab } from "./inspector/tabs/StyleTab";
@@ -161,6 +163,7 @@ export const InspectorPanel: React.FC = () => {
     item.type === "clip" || item.type === "text-clip" || item.type === "shape-clip",
   ).map((item) => item.id), [selectedItems]);
   const pausePlayback = useTimelineStore((state) => state.pause);
+  const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const lockPlayback = useTimelineStore((state) => state.lockPlayback);
   const unlockPlayback = useTimelineStore((state) => state.unlockPlayback);
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
@@ -649,7 +652,13 @@ export const InspectorPanel: React.FC = () => {
     anchor: { x: 0.5, y: 0.5 },
     borderRadius: 0,
   };
-  const transform = selectedClip?.transform || defaultTransform;
+  const transform = selectedTimelineClip?.keyframes?.length
+    ? getAnimatedTransform(
+        selectedTimelineClip.transform,
+        selectedTimelineClip.keyframes,
+        getClipLocalTime(selectedTimelineClip, playheadPosition),
+      )
+    : selectedClip?.transform || defaultTransform;
 
   // Derive UI state from engines
   const chromaKeyEnabled = chromaKeySettings?.enabled || false;

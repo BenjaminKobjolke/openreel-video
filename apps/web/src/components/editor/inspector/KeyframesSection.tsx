@@ -19,7 +19,11 @@ import { useTimelineStore } from "../../../stores/timeline-store";
 import { useEngineStore } from "../../../stores/engine-store";
 import {
   KeyframeEngine,
+  CLIP_KEYFRAME_TIME_TOLERANCE,
   EASING_CATEGORIES,
+  getClipLocalTime,
+  getClipPropertyBaseValue,
+  upsertClipKeyframe,
   type EasingName,
 } from "@openreel/core";
 import type { Keyframe, EasingType } from "@openreel/core";
@@ -410,15 +414,17 @@ interface KeyframesSectionProps {
 export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
   clipId,
 }) => {
-  const { getClip, updateClipKeyframes, project } = useProjectStore();
+  const { updateClipKeyframes, project } = useProjectStore();
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
 
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
 
+  const timelineClip = project.timeline.tracks
+    .flatMap((track) => track.clips)
+    .find((timelineClip) => timelineClip.id === clipId);
   const clip = useMemo(() => {
-    const timelineClip = getClip(clipId);
     if (timelineClip) return timelineClip;
 
     const graphicsEngine = getGraphicsEngine();
@@ -436,8 +442,11 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
     if (textClip) return textClip;
 
     return undefined;
-  }, [clipId, getClip, getGraphicsEngine, getTitleEngine, project.modifiedAt]);
-  const keyframes = clip?.keyframes || [];
+  }, [clipId, getGraphicsEngine, getTitleEngine, timelineClip]);
+  const localTime = timelineClip
+    ? getClipLocalTime(timelineClip, playheadPosition)
+    : playheadPosition;
+  const keyframes = useMemo(() => clip?.keyframes ?? [], [clip?.keyframes]);
 
   const propertiesWithKeyframes = useMemo(() => {
     return [...new Set(keyframes.map((kf) => kf.property))];
@@ -454,42 +463,49 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
 
   const currentValue = useMemo(() => {
     if (!selectedProperty || propertyKeyframes.length === 0) {
-      return propertyDef?.defaultValue ?? 0;
+      return (
+        (timelineClip && selectedProperty
+          ? getClipPropertyBaseValue(timelineClip, selectedProperty)
+          : undefined) ??
+        propertyDef?.defaultValue ??
+        0
+      );
     }
     const result = keyframeEngine.getValueAtTime(
       propertyKeyframes,
-      playheadPosition,
+      localTime,
     );
     return result.value;
-  }, [selectedProperty, propertyKeyframes, playheadPosition, propertyDef]);
+  }, [
+    selectedProperty,
+    propertyKeyframes,
+    localTime,
+    propertyDef,
+    timelineClip,
+  ]);
 
   const hasKeyframeAtPlayhead = useMemo(() => {
     if (!selectedProperty) return false;
     return propertyKeyframes.some(
-      (kf) => Math.abs(kf.time - playheadPosition) < 0.01,
+      (kf) => Math.abs(kf.time - localTime) <= CLIP_KEYFRAME_TIME_TOLERANCE,
     );
-  }, [selectedProperty, propertyKeyframes, playheadPosition]);
+  }, [selectedProperty, propertyKeyframes, localTime]);
 
   const handleAddKeyframe = useCallback(() => {
     if (!selectedProperty || !clip) return;
 
-    const newKeyframe = keyframeEngine.addKeyframe(
-      clipId,
+    const updatedKeyframes = upsertClipKeyframe(
+      keyframes,
       selectedProperty,
-      playheadPosition,
+      localTime,
       currentValue,
-      "linear",
-    );
-
-    const updatedKeyframes = [...keyframes, newKeyframe].sort(
-      (a, b) => a.time - b.time,
     );
     updateClipKeyframes(clipId, updatedKeyframes);
   }, [
     clipId,
     clip,
     selectedProperty,
-    playheadPosition,
+    localTime,
     currentValue,
     keyframes,
     updateClipKeyframes,
@@ -558,7 +574,7 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
           className="flex items-center justify-between gap-3 border border-border"
         >
           <Text type="supporting" color="secondary">
-            Value at {playheadPosition.toFixed(2)}s
+            Value at {localTime.toFixed(2)}s
           </Text>
           <Text type="supporting" color="primary" className="font-mono">
             {typeof currentValue === "number"
@@ -572,8 +588,8 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
         <Button
           label={
             hasKeyframeAtPlayhead
-              ? `Keyframe exists at ${playheadPosition.toFixed(2)}s`
-              : `Add Keyframe at ${playheadPosition.toFixed(2)}s`
+              ? `Keyframe exists at ${localTime.toFixed(2)}s`
+              : `Add Keyframe at ${localTime.toFixed(2)}s`
           }
           icon={
             hasKeyframeAtPlayhead ? (

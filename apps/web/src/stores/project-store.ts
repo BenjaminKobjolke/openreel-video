@@ -41,6 +41,9 @@ import type {
 import {
   ActionExecutor,
   ActionHistory,
+  CLIP_TRANSFORM_KEYFRAME_PROPERTIES,
+  applyTransformChangeToKeyframes,
+  getClipLocalTime,
   getBuiltInEditingTemplate,
   getBuiltInEditingTemplates,
   getMotionPreset,
@@ -1851,7 +1854,7 @@ export const useProjectStore = create<ProjectState>()(
             }
 
             if (restored > 0) {
-              console.info(`[ProjectStore] Auto-restored ${restored} asset(s) from file handles`);
+              console.warn(`[ProjectStore] Auto-restored ${restored} asset(s) from file handles`);
             }
           })();
         }
@@ -2462,6 +2465,28 @@ export const useProjectStore = create<ProjectState>()(
       ): Promise<ActionResult> => {
         const { project, actionExecutor } = get();
 
+        const editedProperties: Array<
+          (typeof CLIP_TRANSFORM_KEYFRAME_PROPERTIES)[number]
+        > = [];
+        if (transformUpdate.position?.x !== undefined) {
+          editedProperties.push("position.x");
+        }
+        if (transformUpdate.position?.y !== undefined) {
+          editedProperties.push("position.y");
+        }
+        if (transformUpdate.scale?.x !== undefined) {
+          editedProperties.push("scale.x");
+        }
+        if (transformUpdate.scale?.y !== undefined) {
+          editedProperties.push("scale.y");
+        }
+        if (transformUpdate.rotation !== undefined) {
+          editedProperties.push("rotation");
+        }
+        if (transformUpdate.opacity !== undefined) {
+          editedProperties.push("opacity");
+        }
+
         const mergeTransform = (base: Transform): Transform => ({
           ...base,
           ...transformUpdate,
@@ -2472,20 +2497,46 @@ export const useProjectStore = create<ProjectState>()(
 
         // Timeline clips are undoable via the action system (the deep-merge of
         // nested axes happens in the transform/update apply handler).
-        const inTimeline = project.timeline.tracks.some((track) =>
-          track.clips.some((c) => c.id === clipId),
-        );
-        if (inTimeline) {
-          const action: Action = {
-            type: "transform/update",
-            id: uuidv4(),
-            timestamp: Date.now(),
-            params: { clipId, transform: transformUpdate },
-          };
-          const result = await actionExecutor.execute(action, project);
-          if (result.success) {
-            set({ project: { ...project } });
+        const timelineClip = project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === clipId);
+        if (timelineClip) {
+          const keyframeChange = applyTransformChangeToKeyframes(
+            timelineClip.keyframes,
+            timelineClip.transform,
+            mergeTransform(timelineClip.transform),
+            getClipLocalTime(
+              timelineClip,
+              useTimelineStore.getState().playheadPosition,
+            ),
+            editedProperties,
+          );
+          const hasStaticTransformChange =
+            JSON.stringify(timelineClip.transform) !==
+            JSON.stringify(keyframeChange.transform);
+          const hasKeyframeChanges =
+            keyframeChange.keyframes.length !== timelineClip.keyframes.length ||
+            keyframeChange.keyframes.some(
+              (keyframe, index) => keyframe !== timelineClip.keyframes[index],
+            );
+
+          let result: ActionResult = { success: true };
+          if (hasStaticTransformChange) {
+            const action: Action = {
+              type: "transform/update",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { clipId, transform: keyframeChange.transform },
+            };
+            result = await actionExecutor.execute(action, project);
+            if (!result.success) return result;
+            set({ project: { ...get().project } });
           }
+
+          if (hasKeyframeChanges) {
+            get().updateClipKeyframes(clipId, keyframeChange.keyframes);
+          }
+
           return result;
         }
 

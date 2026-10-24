@@ -19,4 +19,32 @@ describe("Preview touch interactions", () => {
     expect(preview).toContain('addEventListener("pointerup"');
     expect(preview).toContain('addEventListener("pointercancel"');
   });
+
+  it("derives timeline clip interaction transforms from the animated playhead value", () => {
+    expect(preview).toMatch(/getTransformAtPlayhead\s*=\s*useCallback/);
+    expect(preview).toMatch(/getAnimatedTransform\([\s\S]*?getClipLocalTime\(clip, playheadPosition\)/);
+
+    const bounds = preview.slice(
+      preview.indexOf("const clipBounds = useMemo"),
+      preview.indexOf("const textClipBounds = useMemo"),
+    );
+    expect(bounds).toContain("getTransformAtPlayhead(clip)");
+
+    const nudge = preview.slice(
+      preview.indexOf("const handlePreviewKeyDown"),
+      preview.indexOf("const [hoveredGraphicClipId"),
+    );
+    expect(nudge).toContain("getTransformAtPlayhead(clip)");
+
+    const resizeStart = preview.slice(
+      preview.indexOf("const handleHandleMouseDown"),
+      preview.indexOf("const handleClipMouseDown"),
+    );
+    const dragStart = preview.slice(
+      preview.indexOf("const handleClipMouseDown"),
+      preview.indexOf("const handleTextClipMouseDown"),
+    );
+    expect(resizeStart).toContain("getTransformAtPlayhead(clip)");
+    expect(dragStart).toContain("getTransformAtPlayhead(clip)");
+  });
 });

@@ -63,6 +63,7 @@ import {
 import { GPUCompositor, initializeGPUCompositor } from "./gpu-compositor";
 import { getRendererFactory, type Renderer } from "./renderer-factory";
 import { keyframeEngine } from "./keyframe-engine";
+import { CLIP_EFFECT_KEYFRAME_PROPERTIES } from "./clip-keyframe-values";
 import { getBackgroundRemovalEngine } from "../ai/background-removal-engine";
 import {
   type GifFrameCache,
@@ -97,9 +98,29 @@ const DEFAULT_CACHE_CONFIG: FrameCacheConfig = {
   preloadBehind: 10,
 };
 
-function adjustmentBlendOperation(mode: BlendMode): GlobalCompositeOperation {
+type CanvasCompositeOperation =
+  | "source-over"
+  | "lighter"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "darken"
+  | "lighten"
+  | "color-dodge"
+  | "color-burn"
+  | "hard-light"
+  | "soft-light"
+  | "difference"
+  | "exclusion"
+  | "hue"
+  | "saturation"
+  | "color"
+  | "luminosity";
+
+function adjustmentBlendOperation(mode: BlendMode): CanvasCompositeOperation {
   if (mode === "add" || mode === "linear-dodge") return "lighter";
-  return mode as GlobalCompositeOperation;
+  if (mode === "normal") return "source-over";
+  return mode as CanvasCompositeOperation;
 }
 
 export interface FrameRenderOptions {
@@ -975,7 +996,9 @@ export class VideoEngine {
                     }
                     processedBitmap = bgResult;
                   }
-                } catch {}
+                } catch {
+                  // Keep the original frame when optional background processing fails.
+                }
               }
             }
 
@@ -2580,7 +2603,9 @@ export class VideoEngine {
   private closeBitmap(bitmap: ImageBitmap): void {
     try {
       bitmap.close();
-    } catch {}
+    } catch {
+      // A bitmap may already have been closed by its owner.
+    }
   }
 
   private buildCpuGradingStages(
@@ -2666,22 +2691,9 @@ export class VideoEngine {
       return baseEffects;
     }
 
-    // Each entry maps a keyframe property → effect type and the actual
-    // param key the renderer reads (see EFFECT_DEFINITIONS in types/effects.ts).
-    const effectPropertyMap: Array<{
-      keyframeProp: string;
-      effectType: string;
-      paramKey: string;
-    }> = [
-      { keyframeProp: "effect.brightness", effectType: "brightness", paramKey: "value" },
-      { keyframeProp: "effect.contrast", effectType: "contrast", paramKey: "value" },
-      { keyframeProp: "effect.saturation", effectType: "saturation", paramKey: "value" },
-      { keyframeProp: "effect.blur", effectType: "blur", paramKey: "radius" },
-    ];
-
     const animatedByType = new Map<string, { paramKey: string; value: number }>();
 
-    for (const { keyframeProp, effectType, paramKey } of effectPropertyMap) {
+    for (const { keyframeProp, effectType, paramKey } of CLIP_EFFECT_KEYFRAME_PROPERTIES) {
       const effectKfs = keyframeEngine.getKeyframesForProperty(
         keyframes,
         keyframeProp,
@@ -3482,8 +3494,8 @@ export class VideoEngine {
     return createImageBitmap(this.compositeCanvas!);
   }
 
-  private getCanvasBlendMode(blendMode: BlendMode): GlobalCompositeOperation {
-    const modeMap: Record<BlendMode, GlobalCompositeOperation> = {
+  private getCanvasBlendMode(blendMode: BlendMode): CanvasCompositeOperation {
+    const modeMap: Record<BlendMode, CanvasCompositeOperation> = {
       normal: "source-over",
       multiply: "multiply",
       screen: "screen",
@@ -3611,7 +3623,11 @@ export class VideoEngine {
 
     for (const gifCache of this.gifFrameCache.values()) {
       for (const frame of gifCache.frames) {
-        try { frame.close(); } catch {}
+        try {
+          frame.close();
+        } catch {
+          // A cached frame may already have been closed during replacement.
+        }
       }
     }
     this.gifFrameCache.clear();
@@ -3937,7 +3953,11 @@ export class VideoEngine {
     this.clearCache();
     this.clearVideoElementCache();
     for (const bitmap of this.staticImageCache.values()) {
-      try { bitmap.close(); } catch {}
+      try {
+        bitmap.close();
+      } catch {
+        // Disposal should continue when a cached bitmap is already closed.
+      }
     }
     this.staticImageCache.clear();
     for (const engine of this.compoundEngines.values()) engine.dispose();

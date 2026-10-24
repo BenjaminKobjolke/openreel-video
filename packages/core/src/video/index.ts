@@ -14,6 +14,7 @@ export * from "./speed-presets";
 export * from "./frame-interpolation";
 export * from "./stabilization";
 export * from "./keyframe-engine";
+export * from "./clip-keyframe-values";
 export * from "./chroma-key-engine";
 export * from "./motion-tracking-engine";
 export * from "./playback-engine";

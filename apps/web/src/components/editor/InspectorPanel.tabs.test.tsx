@@ -1,9 +1,17 @@
 import "../../test/install-local-storage-mock";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { Project } from "@openreel/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
+import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
 import { InspectorPanel } from "./InspectorPanel";
 
@@ -139,6 +147,58 @@ describe("InspectorPanel (section navigation by clip type)", () => {
     expect(
       container.querySelector('[data-section-id="transform"]'),
     ).not.toBeNull();
+  });
+
+  it("shows the selected timeline clip's animated transform at the playhead", () => {
+    const project = seedClip({ mediaId: "media-vid", trackType: "video" });
+    const clip = project.timeline.tracks[0]?.clips[0];
+    if (!clip) throw new Error("Expected seeded timeline clip");
+    useProjectStore.setState({
+      project: {
+        ...project,
+        timeline: {
+          ...project.timeline,
+          tracks: project.timeline.tracks.map((track) => ({
+            ...track,
+            clips: track.clips.map((item) =>
+              item.id === clipId
+                ? {
+                    ...item,
+                    startTime: 5,
+                    keyframes: [
+                      {
+                        id: "start-y",
+                        time: 0,
+                        property: "position.y",
+                        value: 200,
+                        easing: "linear",
+                      },
+                      {
+                        id: "end-y",
+                        time: 10,
+                        property: "position.y",
+                        value: 300,
+                        easing: "linear",
+                      },
+                    ],
+                  }
+                : item,
+            ),
+          })),
+        },
+      },
+    });
+    act(() => useTimelineStore.getState().setPlayheadPosition(5));
+
+    render(<InspectorPanel />);
+    expect(screen.getByRole("textbox", { name: "Position Y" })).toHaveValue(
+      "200",
+    );
+
+    act(() => useTimelineStore.getState().setPlayheadPosition(15));
+    expect(screen.getByRole("textbox", { name: "Position Y" })).toHaveValue(
+      "300",
+    );
   });
 
   it("an audio clip does NOT render the Transform section", () => {

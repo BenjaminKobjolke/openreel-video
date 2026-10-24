@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../types/project";
-import type { Clip, Effect } from "../types/timeline";
+import type { Effect } from "../types/timeline";
 import type { ClipColorGrading } from "./color-grading-engine";
 import {
   colorWheels,
