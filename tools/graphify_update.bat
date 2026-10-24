@@ -77,9 +77,18 @@ if errorlevel 1 (
 echo.
 echo --- god nodes (top 5) ---
 "%GRAPHIFY%" god-nodes --top 5
+if errorlevel 1 (
+  echo ERROR: god-nodes query failed.
+  popd & endlocal & exit /b 1
+)
 echo.
 echo --- sample query ---
 "%GRAPHIFY%" query "What are the main modules and how do they connect?"
+if errorlevel 1 (
+  echo ERROR: sample query failed.
+  popd & endlocal & exit /b 1
+)
 
 popd
 endlocal
+exit /b 0
