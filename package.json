@@ -61,6 +61,7 @@
     "packages/*"
   ],
   "devDependencies": {
-    "@astryxdesign/cli": "^0.1.1"
+    "@astryxdesign/cli": "^0.1.1",
+    "eslint": "9.39.5"
   }
 }
