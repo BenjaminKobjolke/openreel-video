@@ -1,17 +1,8 @@
-/docs/
-/infra/
-/scripts/
-/icons/
-/patches/
-/creating-views/
-/claude-plans/
-/tickets/
-/tools/
-/graphify-out/
-/.claude/
-/node_modules/
-/.github/
-/.serena/
+# Keep the graph to first-party workspace code; exclude every other root entry.
+/*
+!/apps/
+!/packages/
+
 /*.md
 /*.json
 /*.txt
