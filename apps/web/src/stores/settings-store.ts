@@ -50,7 +50,7 @@ export const SERVICE_REGISTRY: readonly ServiceConfig[] = [
 export type TtsProvider = "elevenlabs";
 export type LlmProvider = "openai-compatible" | "anthropic-compatible";
 export type AggregatorProvider = "kie-ai" | "freepik";
-export type SettingsTab = "general" | "ai-editor" | "api-keys" | "mcp";
+export type SettingsTab = "general" | "ai-editor" | "api-keys" | "mcp" | "sync";
 
 function isLlmProvider(value: unknown): value is LlmProvider {
   return value === "openai-compatible" || value === "anthropic-compatible";
@@ -82,6 +82,10 @@ export interface SettingsState {
   /** Agent chat: plan tools without applying mutations. */
   agentDryRun: boolean;
 
+  /** Sync server (apps/sync-server). Empty URL = the page's own origin. */
+  syncServerUrl: string;
+  syncToken: string;
+
   // Session-scoped API caches (cleared on session lock, not persisted)
   cachedElevenLabsVoices: Array<{ voice_id: string; name: string; category: string; labels: Record<string, string>; preview_url?: string }> | null;
   cachedElevenLabsModels: Array<{ model_id: string; name: string; description?: string; can_do_text_to_speech?: boolean; languages?: Array<{ language_id: string; name: string }> }> | null;
@@ -101,6 +105,8 @@ export interface SettingsState {
   setMcpAutoAllowTrustedLocal: (enabled: boolean) => void;
   setAgentAutoConfirm: (enabled: boolean) => void;
   setAgentDryRun: (enabled: boolean) => void;
+  setSyncServerUrl: (url: string) => void;
+  setSyncToken: (token: string) => void;
   setDefaultAggregator: (provider: AggregatorProvider) => void;
   setElevenLabsModel: (model: string) => void;
   addFavoriteVoice: (voice: { voiceId: string; name: string; previewUrl?: string }) => void;
@@ -138,6 +144,9 @@ export const useSettingsStore = create<SettingsState>()(
         agentAutoConfirm: false,
         agentDryRun: false,
 
+        syncServerUrl: "",
+        syncToken: "",
+
         cachedElevenLabsVoices: null,
         cachedElevenLabsModels: null,
 
@@ -167,6 +176,10 @@ export const useSettingsStore = create<SettingsState>()(
         setAgentAutoConfirm: (enabled: boolean) => set({ agentAutoConfirm: enabled }),
 
         setAgentDryRun: (enabled: boolean) => set({ agentDryRun: enabled }),
+
+        setSyncServerUrl: (url: string) => set({ syncServerUrl: url.trim() }),
+
+        setSyncToken: (token: string) => set({ syncToken: token.trim() }),
 
         setDefaultAggregator: (provider: AggregatorProvider) =>
           set({ defaultAggregator: provider }),
@@ -280,6 +293,8 @@ export const useSettingsStore = create<SettingsState>()(
           mcpAutoAllowTrustedLocal: state.mcpAutoAllowTrustedLocal,
           agentAutoConfirm: state.agentAutoConfirm,
           agentDryRun: state.agentDryRun,
+          syncServerUrl: state.syncServerUrl,
+          syncToken: state.syncToken,
         }),
       },
     ),

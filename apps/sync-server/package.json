@@ -1,0 +1,21 @@
+{
+  "name": "@openreel/sync-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stores OpenReel projects on disk so the desktop app and a phone browser can share them",
+  "scripts": {
+    "start": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "engines": {
+    "node": ">=23.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

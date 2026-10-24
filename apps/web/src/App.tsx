@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
 import { ToastContainer } from "./components/Toast";
+import { NewerOnServerBanner } from "./components/editor/NewerOnServerBanner";
 import { MobileBlocker } from "./components/MobileBlocker";
 import { WelcomeScreen } from "./components/welcome";
 import { RecoveryDialog } from "./components/welcome/RecoveryDialog";
@@ -172,6 +173,7 @@ function App() {
         </Suspense>
       )}
       <ToastContainer />
+      <NewerOnServerBanner />
       <Suspense fallback={null}>
         {(hasOpenedScriptView || activeModal === "scriptView") && <ScriptViewDialog isOpen={activeModal === "scriptView"} onClose={closeModal} />}
         {activeModal === "search" && <SearchModal isOpen onClose={closeModal} />}

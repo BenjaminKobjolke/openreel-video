@@ -106,3 +106,8 @@ xcuserdata/
 .codex-audit/
 .codex/
 **/local.properties
+
+# Sync server project storage (default data dir)
+apps/sync-server/data/
+apps/sync-server/web-dist/
+start-server.bat

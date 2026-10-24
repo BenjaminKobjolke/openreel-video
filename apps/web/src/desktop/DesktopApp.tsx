@@ -9,6 +9,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useProjectStore } from "../stores/project-store";
 import { autoSaveManager } from "../services/auto-save";
 import { UpdateBanner } from "./UpdateBanner";
+import { NewerOnServerBanner } from "../components/editor/NewerOnServerBanner";
 import { installRendererCrashHandlers, reportRendererCrash } from "./crash-reporting";
 import { installMcpListener } from "../services/agent/mcp-listener";
 import { getLiveEditorHost } from "../services/agent/host-singleton";
@@ -18,6 +19,8 @@ import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { Settings, Sparkles } from "@/icons/lucide-compat";
+import { isSyncConfigured } from "../services/sync-service";
+import { DesktopSyncMenu } from "./editor/DesktopSyncMenu";
 import "./theme/desktop-theme.css";
 
 function detectPlatform(): string {
@@ -90,6 +93,9 @@ export function DesktopApp(): JSX.Element {
     };
   }, []);
 
+  // Subscribe so the Sync menu appears as soon as Settings → Sync is filled in.
+  const syncReady = useSettingsStore((s) => Boolean(s.syncToken && s.syncServerUrl)) && isSyncConfigured();
+
   return (
     <div className="openreel-desktop isolate flex h-screen w-screen flex-col overflow-hidden bg-bg text-fg">
       <DesktopTitleBar platform={platform}>
@@ -104,6 +110,7 @@ export function DesktopApp(): JSX.Element {
             aria-pressed={agentChatVisible}
           />
         ) : null}
+        {hasProject && syncReady ? <DesktopSyncMenu /> : null}
         {hasProject ? <DesktopExportButton /> : null}
         <Button
           label="Settings"
@@ -135,6 +142,7 @@ export function DesktopApp(): JSX.Element {
         </ErrorBoundary>
       </div>
       <UpdateBanner />
+      <NewerOnServerBanner />
       <SettingsDialog />
     </div>
   );

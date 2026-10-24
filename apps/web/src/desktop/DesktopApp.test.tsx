@@ -27,6 +27,10 @@ vi.mock("./editor/DesktopExportButton", () => ({
   DesktopExportButton: () => <Button label="Video Export" />,
 }));
 
+vi.mock("../components/editor/NewerOnServerBanner", () => ({
+  NewerOnServerBanner: () => null,
+}));
+
 vi.mock("../components/editor/settings/SettingsDialog", () => ({
   SettingsDialog: () => <div data-testid="desktop-settings-dialog" />,
 }));

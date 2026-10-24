@@ -29,6 +29,19 @@ export function projectMediaSummary(project: Project) {
   };
 }
 
+/** Project JSON without derived media data (thumbnails, waveforms); shared by backups and the sync server. */
+export function serializeProjectForTransfer(project: Project): string {
+  return serializer.exportToJson({ ...project, mediaLibrary: { ...project.mediaLibrary, items: project.mediaLibrary.items.map((item) => ({
+    ...item, thumbnailUrl: null, filmstripThumbnails: undefined, waveformData: null, isPlaceholder: false,
+  })) } });
+}
+
+export function parseTransferredProject(projectJson: string): Project {
+  const result = serializer.importFromJsonWithValidation(projectJson);
+  if (!result.project || !result.validation.valid) throw new Error(result.validation.errors.join(" ") || "The project is invalid.");
+  return result.project;
+}
+
 export async function createProjectPackage(project: Project, options: PackageOptions = {}): Promise<Blob> {
   checkCancelled(options.signal);
   const ids = new Set<string>();
@@ -49,10 +62,7 @@ export async function createProjectPackage(project: Project, options: PackageOpt
     media.push(blob);
     options.onProgress?.({ completed: media.length, total: project.mediaLibrary.items.length, name: item.name });
   }
-  const cleanProject: Project = { ...project, mediaLibrary: { ...project.mediaLibrary, items: project.mediaLibrary.items.map((item) => ({
-    ...item, thumbnailUrl: null, filmstripThumbnails: undefined, waveformData: null, isPlaceholder: false,
-  })) } };
-  const manifest: PackageManifest = { version: 1, projectJson: serializer.exportToJson(cleanProject), assets };
+  const manifest: PackageManifest = { version: 1, projectJson: serializeProjectForTransfer(project), assets };
   const encoded = new TextEncoder().encode(JSON.stringify(manifest));
   if (encoded.byteLength > MAX_MANIFEST_BYTES) throw new Error("The project metadata is too large to package.");
   const header = new Uint8Array(HEADER_BYTES);
@@ -74,9 +84,7 @@ export async function readProjectPackage(file: Blob, options: Pick<PackageOption
   catch { throw new Error("The backup metadata could not be read."); }
   checkCancelled(options.signal);
   if (manifest.version !== 1 || typeof manifest.projectJson !== "string" || !Array.isArray(manifest.assets)) throw new Error("This backup version is not supported.");
-  const result = serializer.importFromJsonWithValidation(manifest.projectJson);
-  if (!result.project || !result.validation.valid) throw new Error(result.validation.errors.join(" ") || "The project in this backup is invalid.");
-  const project = result.project;
+  const project = parseTransferredProject(manifest.projectJson);
   const ids = new Set(project.mediaLibrary.items.map((item) => item.id));
   if (ids.size !== project.mediaLibrary.items.length || manifest.assets.length !== ids.size) throw new Error("The backup media list does not match the project.");
   const blobs = new Map<string, Blob>();

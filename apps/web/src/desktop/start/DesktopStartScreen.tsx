@@ -18,6 +18,7 @@ import {
   type RecentEntry,
 } from "./desktop-project-actions";
 import { useUIStore } from "../../stores/ui-store";
+import { ServerProjects } from "../../components/editor/ServerProjects";
 
 const FORMAT_ICONS: Record<string, React.ElementType> = {
   vertical: Smartphone,
@@ -122,6 +123,8 @@ export function DesktopStartScreen(): JSX.Element {
             })}
           </div>
         </section>
+
+        <ServerProjects onOpened={() => setDesktopPage("edit")} />
 
         <section>
           <Heading level={2} color="secondary">Recent</Heading>

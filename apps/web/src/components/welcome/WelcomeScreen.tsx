@@ -18,6 +18,7 @@ import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@openreel/core";
 import { useRouter } from "../../hooks/use-router";
 import { useEditorPreload } from "../../hooks/useEditorPreload";
 import { useAnalytics, AnalyticsEvents } from "../../hooks/useAnalytics";
+import { ServerProjects } from "../editor/ServerProjects";
 
 const TemplateGallery = lazy(() =>
   import("./TemplateGallery").then((module) => ({ default: module.TemplateGallery })),
@@ -373,6 +374,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
               onClick={() => navigate("editor")}
               className="rounded-xl"
             />
+          </div>
+
+          <div className="mx-auto mt-6 max-w-sm">
+            <ServerProjects onOpened={handleProjectSelected} />
           </div>
         </div>
 

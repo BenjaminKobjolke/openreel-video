@@ -8,6 +8,7 @@ import {
   Check,
   Pencil,
   FileVideo,
+  CloudUpload,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftCard as Card } from "@openreel/ui";
@@ -19,6 +20,8 @@ import { ToolcraftPopover as Popover } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { autoSaveManager, type AutoSaveMetadata } from "../../services/auto-save";
 import { ErrorBoundary } from "../ErrorBoundary";
+import { ServerProjects } from "./ServerProjects";
+import { isSyncConfigured, saveCurrentProjectToServer } from "../../services/sync-service";
 const ProjectPackageDialog = lazy(() => import("./ProjectPackageDialog").then((module) => ({ default: module.ProjectPackageDialog })));
 
 function formatTimeAgo(timestamp: number): string {
@@ -201,6 +204,14 @@ export const ProjectSwitcher: React.FC = () => {
               <div className="min-w-0 flex-1 space-y-0.5"><Text type="supporting" display="block" className="text-sm font-medium leading-5">Project backups</Text>
                 <Text type="supporting" display="block" color="secondary" className="text-xs leading-4">Download or open a project with media</Text></div>
             </ClickableCard>
+            {isSyncConfigured() && (
+              <ClickableCard label="Save to server" onClick={() => { setIsOpen(false); void saveCurrentProjectToServer(); }} padding={3} variant="transparent"
+                className="flex w-full items-start gap-3 text-left hover:bg-background-secondary">
+                <CloudUpload className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <div className="min-w-0 flex-1 space-y-0.5"><Text type="supporting" display="block" className="text-sm font-medium leading-5">Save to server</Text>
+                  <Text type="supporting" display="block" color="secondary" className="text-xs leading-4">Upload and keep this project in sync</Text></div>
+              </ClickableCard>
+            )}
             <ClickableCard
               label="New Project"
               onClick={handleNewProject}
@@ -221,6 +232,12 @@ export const ProjectSwitcher: React.FC = () => {
               </div>
             </ClickableCard>
           </div>
+
+          {isOpen && isSyncConfigured() && (
+            <div className="border-t border-border p-2">
+              <ServerProjects onOpened={() => setIsOpen(false)} />
+            </div>
+          )}
 
           {otherProjects.length > 0 && (
             <>

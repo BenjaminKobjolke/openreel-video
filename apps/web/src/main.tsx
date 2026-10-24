@@ -1,3 +1,4 @@
+import "./utils/random-uuid-polyfill";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -37,6 +38,8 @@ registerServiceWorker().then((registration) => {
 });
 
 void initCustomFonts();
+
+void import("./services/sync-service").then((sync) => sync.startSyncAutoPush());
 
 const root = document.getElementById("root")!;
 

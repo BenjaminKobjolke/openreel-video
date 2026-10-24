@@ -147,6 +147,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Sync server API (apps/sync-server) must always hit the network
+  if (url.pathname.startsWith("/api/")) {
+    return;
+  }
+
   // Handle AI requests - network only with offline message
   if (isAIRequest(url)) {
     event.respondWith(
