@@ -11,7 +11,7 @@
     "lint": "eslint src",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test --reporter=list"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",
