@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Eye, EyeOff, Volume2, VolumeX, Lock, MoreHorizontal, Trash2, Pencil, AlignLeft, Link2, Unlink, Circle } from "@/icons/lucide-compat";
+import { Eye, EyeOff, Lock, MoreHorizontal, Trash2, Pencil, AlignLeft, Link2, Unlink, Circle } from "@/icons/lucide-compat";
 import {
   ToolcraftContextMenu as ContextMenu,
   ToolcraftDropdownMenu as DropdownMenu,
@@ -17,6 +17,7 @@ import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useCompactEditor } from "../../../hooks/useCompactEditor";
 import { getTrackInfo } from "./utils";
+import { TrackAudioControls } from "./TrackAudioControls";
 
 interface TrackHeaderProps {
   track: Track;
@@ -212,12 +213,16 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
                   {track.name || trackInfo.label}
                 </span>
                 {showRecordDot && (
-                  <Circle
-                    size={8}
-                    className="fill-current text-status-error shrink-0"
-                    aria-label="Recording keyframes"
+                  <span
+                    className="shrink-0"
                     title="Recording keyframes: moving an animated layer adds keyframes"
-                  />
+                  >
+                    <Circle
+                      size={8}
+                      className="fill-current text-status-error"
+                      aria-label="Recording keyframes"
+                    />
+                  </span>
                 )}
               </div>
             )}
@@ -262,44 +267,11 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
               </button>
             )}
             {isAudio && (
-              <>
-                <button
-                  type="button"
-                  aria-label={track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`}
-                  aria-pressed={track.muted}
-                  title={track.muted ? "Unmute track" : "Mute track"}
-                  className={`transition-colors ${
-                    track.muted ? "text-destructive" : "text-fg-muted hover:text-fg-2"
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    muteTrack(track.id, !track.muted);
-                  }}
-                >
-                  {track.muted ? (
-                    <VolumeX size={15} strokeWidth={1.7} aria-hidden />
-                  ) : (
-                    <Volume2 size={15} strokeWidth={1.7} aria-hidden />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  aria-label={track.solo ? `Clear solo ${track.name}` : `Solo ${track.name}`}
-                  aria-pressed={track.solo}
-                  title={track.solo ? "Clear solo" : "Solo track"}
-                  className={`flex h-[18px] min-w-[18px] items-center justify-center rounded px-1 text-[9px] font-black transition-colors ${
-                    track.solo
-                      ? "bg-status-warning text-black"
-                      : "text-fg-muted hover:bg-hover hover:text-fg-2"
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    soloTrack(track.id, !track.solo);
-                  }}
-                >
-                  S
-                </button>
-              </>
+              <TrackAudioControls
+                track={track}
+                onMute={() => muteTrack(track.id, !track.muted)}
+                onSolo={() => soloTrack(track.id, !track.solo)}
+              />
             )}
             <button
               type="button"
