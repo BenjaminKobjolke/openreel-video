@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import type {
+  MediaItem,
   MotionRenderer,
   Project,
   RealtimeAudioGraph,
@@ -142,4 +143,58 @@ export interface PreviewRefs {
 export interface MultiTrackPlaybackState {
   lastFrameTimestamp: number;
   isProcessingFrame: boolean;
+}
+
+export interface MultiTrackPlaybackContext {
+  refs: PreviewRefs;
+  project: Project;
+  previewRes: { scale: number };
+  actualEndTime: number;
+  playbackStartPosition: number;
+  editingFrameDuration: number;
+  isMuted: boolean;
+  isActive: () => boolean;
+  pause: () => void;
+  setPlayheadPosition: (time: number) => void;
+  cleanupPlaybackResources: () => void;
+  cleanupAudioResources: () => void;
+  getMediaItem: (id: string) => MediaItem | undefined;
+  failProxyPlayback: (mediaId: string, blob: Blob) => void;
+  clipMasksById: ReadonlyMap<string, unknown>;
+  getAudioClipsForScheduler: Parameters<RealtimeAudioGraph["startScheduler"]>[0];
+  preDecodeAllAudioBuffers: () => Promise<void>;
+  mediaClipHasVisual: (clip: PreviewClip) => boolean;
+  mediaClipHasAudio: (clip: PreviewClip) => boolean;
+  hasActiveMotionInstances: (time: number) => boolean;
+  renderMotionInstancesForTrack: (
+    ctx: CanvasRenderingContext2D,
+    track: Track,
+    time: number,
+    canvasWidth: number,
+    canvasHeight: number,
+  ) => Promise<boolean>;
+  drawClipFrame: (
+    ctx: CanvasRenderingContext2D,
+    clipId: string,
+    frame: ImageBitmap | HTMLCanvasElement | OffscreenCanvas,
+    transform: ClipTransform,
+    canvasWidth: number,
+    canvasHeight: number,
+    time: number,
+  ) => Promise<void>;
+  fillPreviewBackground: (
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    time: number,
+    width: number,
+    height: number,
+  ) => void;
+}
+
+export interface MultiTrackPlaybackRun {
+  state: MultiTrackPlaybackState;
+  frameDuration: number;
+  masterClock: ReturnType<typeof import("@openreel/core").getMasterClock>;
+  audioGraph: RealtimeAudioGraph;
+  mainCtx: CanvasRenderingContext2D;
+  ctx: CanvasRenderingContext2D;
 }
