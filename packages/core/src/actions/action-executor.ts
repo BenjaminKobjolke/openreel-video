@@ -62,6 +62,18 @@ interface MutableProjectItems {
   motionInstances?: MotionCompositionInstance[];
 }
 
+interface MutableProjectActionFields {
+  name: string;
+  modifiedAt: number;
+  settings: Project["settings"];
+  timeline: MutableTimeline;
+  generatedShaders: readonly MotionShaderDef[];
+}
+
+interface MutableMediaLibrary {
+  items: MediaItem[];
+}
+
 interface TrackOwnedItems {
   textClips: TextClip[];
   shapeClips: ShapeClip[];
@@ -375,33 +387,35 @@ export class ActionExecutor {
   }
 
   private applyProjectAction(action: ProjectAction, project: Project): void {
+    const mutableProject = project as Project & MutableProjectActionFields;
+
     switch (action.type) {
       case "project/rename":
-        (project as any).name = action.params.name;
-        (project as any).modifiedAt = Date.now();
+        mutableProject.name = action.params.name;
+        mutableProject.modifiedAt = Date.now();
         break;
 
       case "project/updateSettings":
-        (project as any).settings = {
+        mutableProject.settings = {
           ...project.settings,
           ...action.params,
         };
-        (project as any).modifiedAt = Date.now();
+        mutableProject.modifiedAt = Date.now();
         break;
 
       case "project/setCanvasBackground":
-        (project as any).timeline = {
+        mutableProject.timeline = {
           ...project.timeline,
           backgroundFillMode: action.params.backgroundFillMode,
           layoutBackgroundColor: action.params.layoutBackgroundColor,
         };
-        (project as any).modifiedAt = Date.now();
+        mutableProject.modifiedAt = Date.now();
         break;
 
       case "project/create":
-        (project as any).name = action.params.name;
-        (project as any).settings = action.params.settings;
-        (project as any).modifiedAt = Date.now();
+        mutableProject.name = action.params.name;
+        mutableProject.settings = action.params.settings;
+        mutableProject.modifiedAt = Date.now();
         break;
 
       case "project/registerGeneratedShader": {
@@ -413,8 +427,8 @@ export class ActionExecutor {
           ...existing.filter((entry) => entry.id !== def.id),
           def,
         ];
-        (project as any).generatedShaders = next;
-        (project as any).modifiedAt = Date.now();
+        mutableProject.generatedShaders = next;
+        mutableProject.modifiedAt = Date.now();
         registerMotionShader(def);
         break;
       }
@@ -423,10 +437,10 @@ export class ActionExecutor {
         const shaderId = action.params.shaderId;
         const existing: readonly MotionShaderDef[] =
           project.generatedShaders ?? [];
-        (project as any).generatedShaders = existing.filter(
+        mutableProject.generatedShaders = existing.filter(
           (entry) => entry.id !== shaderId,
         );
-        (project as any).modifiedAt = Date.now();
+        mutableProject.modifiedAt = Date.now();
         unregisterMotionShader(shaderId);
         break;
       }
@@ -437,7 +451,7 @@ export class ActionExecutor {
     action: MediaAction | { type: string; params: Record<string, unknown> },
     project: Project,
   ): Promise<void> {
-    const mediaLibrary = project.mediaLibrary as any;
+    const mediaLibrary = project.mediaLibrary as MutableMediaLibrary;
 
     switch (action.type) {
       case "media/import": {
