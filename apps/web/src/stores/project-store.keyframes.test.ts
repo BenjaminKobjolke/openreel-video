@@ -139,7 +139,7 @@ describe("ProjectStore clip transform keyframes", () => {
 
     const result = await useProjectStore
       .getState()
-      .updateClipTransform("clip-1", { position: { x: 25 } });
+      .updateClipTransform("clip-1", { position: { x: 25, y: 0 } });
 
     expect(result.success).toBe(true);
     const clip = useProjectStore.getState().project.timeline.tracks[0]?.clips[0];
