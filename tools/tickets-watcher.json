@@ -7,13 +7,15 @@
     "analyze_code.bat",
     "analyze_code_config.bat",
     "analyze_code_config.example.bat",
+    "check_build.bat",
     "graphify_update.bat",
     "restart.bat"
   ],
   "analysis_commands": [
     "pnpm test",
     "pnpm --filter @openreel/studio test:e2e",
-    "tools/analyze_changed_and_new_files.bat"
+    "tools/analyze_changed_and_new_files.bat",
+    "tools/check_build.bat"
   ],
   "analysis_commands_seen": {
     "scripts": [
@@ -32,8 +34,14 @@
     },
     "tools/analyze_changed_and_new_files.bat": {
       "code_quality": "green"
+    },
+    "tools/check_build.bat": {
+      "code_quality": "failed"
     }
   },
-  "analysis_code_quality_timeout_seconds": 370,
+  "analysis_command_kinds": {
+    "tools/check_build.bat": "code_quality"
+  },
+  "analysis_code_quality_timeout_seconds": 540,
   "analysis_test_timeout_seconds": 920
 }
