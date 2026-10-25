@@ -17,11 +17,6 @@ import { usePreviewMedia } from "./usePreviewMedia";
 export function usePreviewSetup1() {
     const compact = useCompactEditor();
   
-    useEffect(() => () => {
-      refs.motionRendererRef.current?.dispose();
-      refs.motionRendererRef.current = null;
-    }, [refs.motionRendererRef]);
-  
     const [isMuted, setIsMuted] = useState(false);
     const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -70,39 +65,6 @@ export function usePreviewSetup1() {
       "clip" | "text-clip" | "shape-clip" | null
     >(null);
   
-    // Track canvas size changes for resize handles positioning
-    useEffect(() => {
-      const canvas = refs.canvasRef.current;
-      if (!canvas) return;
-  
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const { width, height } = entry.contentRect;
-          setCanvasSize({ width, height });
-          // CSS resizing only moves handles. Replacing the drawing canvas here
-          // can discard an in-flight decoded frame when maximizing or resizing.
-          // Render paths allocate it at the actual canvas pixel resolution.
-        }
-      });
-  
-      resizeObserver.observe(canvas);
-      return () => resizeObserver.disconnect();
-    }, [refs.canvasRef]);
-  
-    useEffect(() => {
-      const videoArea = refs.videoAreaRef.current;
-      if (!videoArea) return;
-  
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const { width, height } = entry.contentRect;
-          setVideoAreaSize({ width, height });
-        }
-      });
-  
-      resizeObserver.observe(videoArea);
-      return () => resizeObserver.disconnect();
-    }, [refs.videoAreaRef]);
   
     // Project store - subscribe to the entire project to ensure re-renders
     // when any part of the project changes (including clips)
@@ -133,11 +95,6 @@ export function usePreviewSetup1() {
       getMaskEngine,
     });
   
-    useEffect(() => {
-      const cachedFrame = refs.lastGoodFrameRef.current;
-      refs.lastGoodFrameRef.current = null;
-      cachedFrame?.close();
-    }, [project, proxySourceRevision, refs.lastGoodFrameRef]);
   
     const updateClipTransform = useProjectStore(
       (state) => state.updateClipTransform,
@@ -207,6 +164,52 @@ export function usePreviewSetup1() {
       project,
       proxySourceRevision,
     });
+
+    useEffect(() => () => {
+      refs.motionRendererRef.current?.dispose();
+      refs.motionRendererRef.current = null;
+    }, [refs.motionRendererRef]);
+
+    // Track canvas size changes for resize handles positioning
+    useEffect(() => {
+      const canvas = refs.canvasRef.current;
+      if (!canvas) return;
+
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          setCanvasSize({ width, height });
+          // CSS resizing only moves handles. Replacing the drawing canvas here
+          // can discard an in-flight decoded frame when maximizing or resizing.
+          // Render paths allocate it at the actual canvas pixel resolution.
+        }
+      });
+
+      resizeObserver.observe(canvas);
+      return () => resizeObserver.disconnect();
+    }, [refs.canvasRef]);
+
+    useEffect(() => {
+      const videoArea = refs.videoAreaRef.current;
+      if (!videoArea) return;
+
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          setVideoAreaSize({ width, height });
+        }
+      });
+
+      resizeObserver.observe(videoArea);
+      return () => resizeObserver.disconnect();
+    }, [refs.videoAreaRef]);
+
+    useEffect(() => {
+      const cachedFrame = refs.lastGoodFrameRef.current;
+      refs.lastGoodFrameRef.current = null;
+      cachedFrame?.close();
+    }, [project, proxySourceRevision, refs.lastGoodFrameRef]);
+
     const {
       cancelPendingScrubDecode,
       evictOldestVideoElement,

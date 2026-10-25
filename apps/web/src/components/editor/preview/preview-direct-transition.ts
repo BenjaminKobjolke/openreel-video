@@ -7,7 +7,7 @@ import {
 import { drawFrameWithTransform } from "./canvas-renderers";
 import { createTransparentImageBitmap, hasBehindSubjectText } from "./preview-subject-mask";
 import { DEFAULT_TRANSFORM } from "./types";
-import type { Track, ShapeClip, TextClip } from "@openreel/core";
+import type { Track, ShapeClip, SVGClip, StickerClip, TextClip } from "@openreel/core";
 import type { usePreviewMotion } from "./usePreviewMotion";
 
 interface TransitionRenderState {
@@ -22,7 +22,7 @@ interface TransitionRenderContext {
   ctx: CanvasRenderingContext2D;
   time: number;
   timelineTracks: Track[];
-  activeShapeClips: ShapeClip[];
+  activeShapeClips: (ShapeClip | SVGClip | StickerClip)[];
   activeTextClips: TextClip[];
   decodeClipFrame: (clip: { id: string; mediaId: string; startTime: number; inPoint?: number }, time: number) => Promise<ImageBitmap | null>;
   renderOverlayClipsInTrackOrder: ReturnType<typeof usePreviewMotion>["renderOverlayClipsInTrackOrder"];

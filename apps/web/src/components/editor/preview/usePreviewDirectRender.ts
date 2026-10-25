@@ -11,7 +11,7 @@ import {
   getSpeedEngine,
   getVisibleTrackRenderOrder,
 } from "@openreel/core";
-import { getRenderBridge } from "../../bridges/render-bridge";
+import { getRenderBridge } from "../../../bridges/render-bridge";
 import {
   applyPreviewAdjustmentLayers,
   clipCssFilterOnly,
@@ -19,9 +19,14 @@ import {
 import { applyStabilizationTransform, scaleTransformPositionForPreview } from "./preview-frame-prep";
 import {
   captureSubjectFrame,
-  drawBlurredBackdrop,
   hasBehindSubjectText,
+  getBehindSubjectStreamId,
 } from "./preview-subject-mask";
+import { drawBlurredBackdrop } from "./preview-aspect";
+import {
+  renderShapeClipWithEffects,
+  renderTextClipWithSubjectMask,
+} from "./preview-layer-effects";
 import type { ClipTransform } from "./types";
 import type { PreviewRefs, PreviewClip } from "./preview-runtime-types";
 import type { usePreviewMedia } from "./usePreviewMedia";
@@ -487,7 +492,8 @@ export const usePreviewDirectRender = (options: PreviewDirectRenderOptions) => {
       isDark,
       isPlaying,
       project.adjustmentLayers,
-      mediaClipHasVisual,
+      mediaClipHasVisual, canvasFillModeRef, canvasRef,
+      lastGoodFrameRef, offscreenCanvasRef, offscreenCtxRef,
     ],
   );
 };

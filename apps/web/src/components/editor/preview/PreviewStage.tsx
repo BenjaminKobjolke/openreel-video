@@ -4,7 +4,15 @@ import { ProcessingOverlay } from "../ProcessingOverlay";
 import { ExportProgressOverlay } from "../ExportProgressOverlay";
 import { PreviewTransformOverlays } from "./PreviewTransformOverlays";
 import type { PreviewRefs, PreviewClip } from "./preview-runtime-types";
-import type { MotionPathConfig, ParticleEffect } from "@openreel/core";
+import type {
+  MotionPathConfig,
+  ParticleEffect,
+  ShapeClip,
+  StickerClip,
+  SVGClip,
+} from "@openreel/core";
+
+type PreviewGraphicClip = ShapeClip | SVGClip | StickerClip;
 
 interface PreviewStageProps {
   refs: PreviewRefs;
@@ -56,14 +64,14 @@ interface PreviewStageProps {
   handleTextHandleMouseDown: React.ComponentProps<typeof PreviewTransformOverlays>["handleTextHandleMouseDown"];
   showShapeClipHandles: boolean;
   shapeClipBounds: { x: number; y: number; width: number; height: number } | null;
-  selectedShapeClip: React.ComponentProps<typeof PreviewTransformOverlays>["selectedShapeClip"];
+  selectedShapeClip: ShapeClip | SVGClip | StickerClip | null;
   handleShapeClipMouseDown: React.PointerEventHandler<HTMLDivElement>;
   handleShapeHandleMouseDown: React.ComponentProps<typeof PreviewTransformOverlays>["handleShapeHandleMouseDown"];
   showSubtitleOverlay: boolean;
   subtitleBounds: { x: number; y: number; width: number; height: number } | null;
-  activeGraphicClips: PreviewClip[];
+  activeGraphicClips: PreviewGraphicClip[];
   selectedShapeClipId: string | null;
-  getGraphicClipDisplayBounds: (clip: PreviewClip) => { x: number; y: number; width: number; height: number } | null;
+  getGraphicClipDisplayBounds: (clip: PreviewGraphicClip) => { x: number; y: number; width: number; height: number } | null;
   exportState: { isExporting: boolean; progress: number; phase: string };
   videoAreaSize: { width: number; height: number };
 }
@@ -91,7 +99,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = (props) => {
   return (
     <>
       {/* Crop Mode View - Full Screen Overlay */}
-      {shouldShowCropMode && (
+      {shouldShowCropMode && cropVideoSrc && (
         <CropModeView
           clip={cropClip!}
           videoSrc={cropVideoSrc}

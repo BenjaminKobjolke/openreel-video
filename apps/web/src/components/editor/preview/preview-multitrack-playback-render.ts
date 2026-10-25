@@ -33,7 +33,7 @@ export const renderMultiTrackContent = async (
   activeTextClips: ReturnType<typeof import("./canvas-renderers").getActiveTextClips>,
   activeShapeClips: ReturnType<typeof import("./canvas-renderers").getActiveShapeClips>,
 ): Promise<void> => {
-  const { refs, previewRes, getMediaItem, hasActiveMotionInstances } = context;
+  const { refs, hasActiveMotionInstances } = context;
   const canvas = refs.canvasRef.current;
   if (!canvas) return;
 

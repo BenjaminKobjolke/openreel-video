@@ -7,12 +7,12 @@ import {
   type Project,
   type ShapeClip,
   type StickerClip,
-  type Subtitle,
   type SVGClip,
   type TextClip,
 } from "@openreel/core";
 import { previewProxyCache } from "../../../stores/preview-proxy-store";
-import { drawFrameWithMasks, drawFrameWithTransform } from "./canvas-renderers";
+import { drawFrameWithMasks } from "./masked-frame-renderer";
+import { drawFrameWithTransform } from "./canvas-renderers";
 import type { PreviewClip, PreviewFrameSource } from "./preview-runtime-types";
 import type { ClipTransform } from "./types";
 

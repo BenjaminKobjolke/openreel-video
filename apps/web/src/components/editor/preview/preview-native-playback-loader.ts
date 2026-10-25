@@ -8,14 +8,12 @@ type PreviewClip = Track["clips"][number];
 interface NativePlaybackLoaderOptions {
   refs: PreviewRefs;
   isCurrentPlayback: () => boolean;
-  getMediaItem: (id: string) => MediaItem | undefined;
   failProxyPlayback: (mediaId: string, blob: Blob) => void;
 }
 
 export const createNativeVideoLoader = ({
   refs,
   isCurrentPlayback,
-  getMediaItem,
   failProxyPlayback,
 }: NativePlaybackLoaderOptions) => {
   const videoCache = refs.nativeVideoCacheRef.current;

@@ -1,13 +1,11 @@
 /** Starts preview playback across video, overlays, motion, and audio tracks. */
 import {
-  getActiveShapeClips,
-  getActiveTextClips,
   getMasterClock,
   getRealtimeAudioGraph,
   trackHasAudioItems,
 } from "@openreel/core";
-import { resolvePlaybackLoop } from "../../../utils/playback-loop";
-import { findAllClipsAtTime, findNextClipStartTime } from "./preview-playback-clips";
+import { getActiveShapeClips, getActiveTextClips } from "./canvas-renderers";
+import { findAllClipsAtTime } from "./preview-playback-clips";
 import { initClipResources, preCacheAllImageBitmaps } from "./preview-playback-resources";
 import type {
   MultiTrackPlaybackContext,

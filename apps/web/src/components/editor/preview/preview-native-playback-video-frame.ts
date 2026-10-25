@@ -35,7 +35,6 @@ export const renderNativeVideoClipFrame = async (options: ActiveClipFrameOptions
   const {
     refs,
     previewRes,
-    actualEndTime,
     editingFrameDuration,
     allSubtitles,
     hasActiveMotionInstances,
@@ -45,7 +44,6 @@ export const renderNativeVideoClipFrame = async (options: ActiveClipFrameOptions
     activeClip,
     currentPlayhead,
     drawFrame,
-    clips,
     imageClips,
     canvas,
     ctx,

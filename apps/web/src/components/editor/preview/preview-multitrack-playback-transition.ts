@@ -3,9 +3,7 @@ import {
   getSpeedEngine,
 } from "@openreel/core";
 import {
-  getActiveShapeClips,
   getActiveSubtitles,
-  getActiveTextClips,
   getTransitionAtTime,
   renderSubtitleToCanvas,
   renderTransitionCanvas,
@@ -35,8 +33,8 @@ export const renderMultiTrackTransition = async (
   run: MultiTrackPlaybackRun,
   transition: PlaybackTransition,
   currentPlayhead: number,
-  activeShapeClips: ReturnType<typeof import("@openreel/core").getActiveShapeClips>,
-  activeTextClips: ReturnType<typeof import("@openreel/core").getActiveTextClips>,
+  activeShapeClips: ReturnType<typeof import("./canvas-renderers").getActiveShapeClips>,
+  activeTextClips: ReturnType<typeof import("./canvas-renderers").getActiveTextClips>,
   processFrame: () => void,
 ): Promise<boolean> => {
   const { refs, editingFrameDuration, setPlayheadPosition, getMediaItem } = context;

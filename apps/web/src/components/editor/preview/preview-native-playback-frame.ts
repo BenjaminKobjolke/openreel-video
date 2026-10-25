@@ -2,7 +2,6 @@
 import {
   getVidstabEngine,
   type MediaItem,
-  type Track,
 } from "@openreel/core";
 import {
   getActiveShapeClips,
@@ -15,7 +14,7 @@ import {
 import { captureSubjectFrame, createTransparentCanvasSource, hasBehindSubjectText } from "./preview-subject-mask";
 import type { PreviewClip } from "./preview-runtime-types";
 import type { NativePlaybackOptions } from "./usePreviewNativePlayback";
-import { playVideoElement } from "./preview-native-playback-sync";
+import { playVideoElement, syncVideoToClipTime } from "./preview-native-playback-sync";
 import { renderNativeNoClipFrame } from "./preview-native-playback-no-clip";
 import { renderNativeVideoClipFrame } from "./preview-native-playback-video-frame";
 
@@ -66,7 +65,6 @@ export const createNativePlaybackFrame = (options: NativePlaybackFrameOptions) =
     fillPreviewBackground,
     setPlayheadPosition,
     mediaClipHasVisual,
-    clips,
     imageClips,
     canvas,
     ctx,
@@ -75,7 +73,6 @@ export const createNativePlaybackFrame = (options: NativePlaybackFrameOptions) =
     imageBitmapCache,
     loadVideoForClip,
     findClipAtTime,
-    findNextNativeClip,
     findNativeClipById,
     cleanup,
     onEnd,
@@ -87,15 +84,11 @@ export const createNativePlaybackFrame = (options: NativePlaybackFrameOptions) =
     isScrubbingRef,
     startPositionRef,
     lastPlayheadUpdateRef,
-    rateRef,
     allShapeClipsRef,
     allTextClipsRef,
     playheadPositionRef,
-    canvasFillModeRef,
-    lastGoodFrameRef,
   } = refs;
-  let drawFrame: () => Promise<void>;
-  drawFrame = async () => {
+  const drawFrame = async () => {
         if (!isPlaybackActive() || !nativePlaybackActiveRef.current) return;
 
         const currentPlayhead = masterClock.currentTime;

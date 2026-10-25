@@ -7,7 +7,7 @@ import type { ClipTransform } from "./types";
 import type { TitleEngine } from "@openreel/core";
 
 type Shape = ShapeClip | SVGClip | StickerClip;
-interface PreviewBoundsOptions {
+interface PreviewClipBoundsOptions {
   refs: PreviewRefs;
   selectedClip: PreviewClip | null;
   clipAtPlayhead: PreviewClip | null;
@@ -17,15 +17,19 @@ interface PreviewBoundsOptions {
   settings: { width: number; height: number };
   getMediaItem: (id: string) => MediaItem | undefined;
   selectedTextClip: TextClip | null;
-  selectedShapeClip: Shape | null;
   getTitleEngine: () => TitleEngine | null;
+}
+
+interface PreviewGraphicBoundsOptions {
+  refs: PreviewRefs; settings: { width: number; height: number };
   allShapeClips: Shape[];
   playheadPosition: number;
   selectedItems: { type: string; id: string }[];
   allSubtitles: Subtitle[];
+  selectedShapeClip: Shape | null;
 }
 
-export function usePreviewClipBounds(options: PreviewBoundsOptions) {
+export function usePreviewClipBounds(options: PreviewClipBoundsOptions) {
   const { refs, selectedClip, clipAtPlayhead, canvasSize, getTransformAtPlayhead, liveTransform,
     settings, getMediaItem, selectedTextClip, getTitleEngine } = options;
   const { canvasRef, overlayRef } = refs;
@@ -136,7 +140,7 @@ export function usePreviewClipBounds(options: PreviewBoundsOptions) {
     canvasSize,
     liveTransform,
     getMediaItem,
-    getTransformAtPlayhead,
+    getTransformAtPlayhead, canvasRef, overlayRef,
   ]);
 
   const textClipBounds = useMemo(() => {
@@ -206,11 +210,11 @@ export function usePreviewClipBounds(options: PreviewBoundsOptions) {
       displayScale,
       isTextClip: true,
     };
-  }, [selectedTextClip, settings.width, settings.height, canvasSize, getTitleEngine]);
+  }, [selectedTextClip, settings.width, settings.height, canvasSize, getTitleEngine, canvasRef, overlayRef]);
 
   return { clipBounds, textClipBounds };
 }
-export function usePreviewGraphicBounds(options: PreviewBoundsOptions) {
+export function usePreviewGraphicBounds(options: PreviewGraphicBoundsOptions) {
   const { refs, settings, allShapeClips, playheadPosition, selectedItems, allSubtitles, selectedShapeClip } = options;
   const { canvasRef, overlayRef } = refs;
   const [hoveredGraphicClipId, setHoveredGraphicClipId] = useState<string | null>(null);
@@ -296,7 +300,7 @@ export function usePreviewGraphicBounds(options: PreviewBoundsOptions) {
       displayScale,
       isShapeClip: true,
     };
-  }, [selectedShapeClip, settings.width, settings.height]);
+  }, [selectedShapeClip, settings.width, settings.height, canvasRef, overlayRef]);
 
   const getGraphicClipDisplayBounds = useCallback(
     (clip: ShapeClip | SVGClip | StickerClip) => {
@@ -373,7 +377,7 @@ export function usePreviewGraphicBounds(options: PreviewBoundsOptions) {
         centerY,
       };
     },
-    [settings.width, settings.height],
+    [settings.width, settings.height, canvasRef, overlayRef],
   );
 
   const findGraphicClipAtPoint = useCallback(
@@ -399,7 +403,7 @@ export function usePreviewGraphicBounds(options: PreviewBoundsOptions) {
       }
       return null;
     },
-    [activeGraphicClips, getGraphicClipDisplayBounds],
+    [activeGraphicClips, getGraphicClipDisplayBounds, overlayRef],
   );
 
   const selectedSubtitleId = useMemo(() => {
@@ -488,7 +492,7 @@ export function usePreviewGraphicBounds(options: PreviewBoundsOptions) {
     selectedSubtitleObj,
     settings.width,
     settings.height,
-    playheadPosition,
+    playheadPosition, canvasRef, overlayRef,
   ]);
 
   return { hoveredGraphicClipId, setHoveredGraphicClipId, activeGraphicClips, shapeClipBounds, getGraphicClipDisplayBounds, findGraphicClipAtPoint, selectedSubtitleId, selectedSubtitleObj, subtitleBounds };

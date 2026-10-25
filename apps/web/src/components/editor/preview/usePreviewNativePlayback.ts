@@ -5,16 +5,14 @@ import {
   getRealtimeAudioGraph,
   getVidstabEngine,
   trackHasAudioItems,
-  type MediaItem,
   type Project,
   type Subtitle,
   type Track,
 } from "@openreel/core";
-import { fillPreviewBackground } from "./preview-decode-frame";
 import { createNativeVideoLoader } from "./preview-native-playback-loader";
 import { createNativePlaybackFrame } from "./preview-native-playback-frame";
 import { playVideoElement, syncVideoToClipTime } from "./preview-native-playback-sync";
-import type { PreviewClip, PreviewRefs } from "./preview-runtime-types";
+import type { PreviewRefs } from "./preview-runtime-types";
 import type { usePreviewAudioScheduler } from "./usePreviewAudioScheduler";
 import type { usePreviewMedia } from "./usePreviewMedia";
 import type { usePreviewMotion } from "./usePreviewMotion";
@@ -42,7 +40,12 @@ export interface NativePlaybackOptions {
   hasActiveMotionInstances: MotionHooks["hasActiveMotionInstances"];
   renderOverlayClipsInTrackOrder: MotionHooks["renderOverlayClipsInTrackOrder"];
   mediaClipHasVisual: MediaLookup["mediaClipHasVisual"];
-  fillPreviewBackground: typeof fillPreviewBackground;
+  fillPreviewBackground: (
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    time: number,
+    width: number,
+    height: number,
+  ) => void;
   setPlayheadPosition: (position: number) => void;
 }
 
@@ -71,18 +74,8 @@ export const usePreviewNativePlayback = ({
     nativePlaybackActiveRef,
     nativeImageBitmapCacheRef,
     audioGraphRef,
-    timelineTracksRef,
-    isScrubbingRef,
-    startPositionRef,
-    lastPlayheadUpdateRef,
-    rateRef,
     videoElementRef,
     currentVideoMediaIdRef,
-    lastGoodFrameRef,
-    canvasFillModeRef,
-    allShapeClipsRef,
-    allTextClipsRef,
-    playheadPositionRef,
   } = refs;
   return useCallback(
     async (
@@ -139,7 +132,6 @@ export const usePreviewNativePlayback = ({
       const { loadVideoForClip, videoCache } = createNativeVideoLoader({
         refs,
         isCurrentPlayback,
-        getMediaItem,
         failProxyPlayback,
       });
 
@@ -206,7 +198,7 @@ export const usePreviewNativePlayback = ({
 
       const frameState = { rafId: null as number | null, currentClipId: null as string | null };
       let cleanup: (preserveCaches?: boolean) => void = () => {};
-      const drawFrame = createNativePlaybackFrame({ refs, actualEndTime, editingFrameDuration, allSubtitles, isPlaybackActive: () => isActive, hasActiveMotionInstances, renderOverlayClipsInTrackOrder, fillPreviewBackground, setPlayheadPosition, mediaClipHasVisual, clips, imageClips, canvas, ctx, masterClock, videoCache, imageBitmapCache, loadVideoForClip, findClipAtTime, findNextNativeClip, findNativeClipById, cleanup: () => cleanup(), onEnd, state: frameState });
+      const drawFrame = createNativePlaybackFrame({ refs, actualEndTime, editingFrameDuration, previewRes, allSubtitles, isPlaybackActive: () => isActive, hasActiveMotionInstances, renderOverlayClipsInTrackOrder, fillPreviewBackground, setPlayheadPosition, mediaClipHasVisual, clips, imageClips, canvas, ctx, masterClock, videoCache, imageBitmapCache, loadVideoForClip, findClipAtTime, findNextNativeClip, findNativeClipById, cleanup: () => cleanup(), onEnd, state: frameState });
 
       cleanup = (preserveCaches = false) => {
         isActive = false;
@@ -283,7 +275,14 @@ export const usePreviewNativePlayback = ({
       timelineTracks,
       project,
       mediaClipHasVisual,
-      previewRes.scale,
+      refs,
+      canvasRef,
+      nativePlaybackActiveRef,
+      nativeImageBitmapCacheRef,
+      audioGraphRef,
+      videoElementRef,
+      currentVideoMediaIdRef,
+      previewRes,
     ],
   );
 };
