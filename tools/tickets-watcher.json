@@ -36,7 +36,7 @@
       "code_quality": "green"
     },
     "tools/check_build.bat": {
-      "code_quality": "failed"
+      "code_quality": "green"
     }
   },
   "analysis_command_kinds": {
