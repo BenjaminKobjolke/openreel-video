@@ -1,5 +1,4 @@
 import React, {
-  useRef,
   useEffect,
   useCallback,
   useState,
@@ -34,7 +33,6 @@ import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
-import { getEffectsBridge } from "../../bridges/effects-bridge";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import {
   RendererFactory,
@@ -44,16 +42,9 @@ import {
   getSpeedEngine,
   getMasterClock,
   getRealtimeAudioGraph,
-  initializeAudioEffectsEngine,
-  getPreviewAudioEffects,
-  splitProfileAwareNoiseReductionEffects,
-  resolveClipAudioEffects as resolveTimelineClipAudioEffects,
-  resolveClipVolumeAutomation,
   getParticleEngine,
   MotionRenderer,
   type Effect,
-  type AudioEffectParams,
-  type AudioClipSchedule,
   type TextClip,
   type ShapeClip,
   type SVGClip,
@@ -61,14 +52,6 @@ import {
   type Subtitle,
   type Track,
   getClipLocalTime,
-  type MotionAsset,
-  type Mask,
-  type AdjustmentLayer,
-  type BlendMode,
-  type MediaItem,
-  getTrackTransitionAudioFades,
-  resolveCanvasFitDimensions,
-  getMediaItemCapabilities,
   getVisibleTrackRenderOrder,
   trackHasAudioItems,
   calculateProjectDuration,
@@ -80,16 +63,12 @@ import {
   type ClipTransform,
   DEFAULT_TRANSFORM,
   formatTime,
-  renderTextClipToCanvas,
   getActiveTextClips,
   getActiveShapeClips,
-  renderShapeClipToCanvas,
   getActiveSubtitles,
   renderSubtitleToCanvas,
   drawFrameWithTransform,
-  drawFrameWithMasks,
   applyEffectsToFrame,
-  applyEffectsToFrameCanvas,
   getTransitionAtTime,
   setImageLoadCallback,
   renderTransitionFrame,
@@ -104,886 +83,81 @@ import {
   previewQualityScale,
   PREVIEW_QUALITY_OPTIONS,
 } from "./preview/index";
+import type {
+  GPULayer,
+  MultiTrackPlaybackState,
+  PreviewClip,
+} from "./preview/preview-runtime-types";
+import {
+  applyPreviewAdjustmentLayers,
+  clipCssFilterOnly,
+} from "./preview/preview-adjustment-layers";
+import {
+  applyStabilizationTransform,
+  preparePreviewFrame,
+  scaleTransformPositionForPreview,
+} from "./preview/preview-frame-prep";
+import {
+  ASPECT_PRESETS,
+  aspectLabelFor,
+  drawBlurredBackdrop,
+} from "./preview/preview-aspect";
+import {
+  renderAllLayersWithGPU,
+  renderFrameWithGPU,
+} from "./preview/preview-gpu-layers";
+import {
+  captureSubjectFrame,
+  createTransparentCanvasSource,
+  createTransparentImageBitmap,
+  getBehindSubjectStreamId,
+  hasBehindSubjectText,
+} from "./preview/preview-subject-mask";
+import {
+  renderShapeClipWithEffects,
+  renderTextClipWithSubjectMask,
+} from "./preview/preview-layer-effects";
+import {
+  findAllClipsAtTime as selectAllClipsAtTime,
+  findClipAtTime as selectClipAtTime,
+  findNextClipStartTime as selectNextClipStartTime,
+} from "./preview/preview-playback-clips";
+import {
+  initClipResources,
+  preCacheAllImageBitmaps,
+} from "./preview/preview-playback-resources";
+import { usePreviewNativePlayback } from "./preview/usePreviewNativePlayback";
 import { snapCanvasPosition } from "./preview/canvas-snapping";
-import { captureNativeVideoFrame } from "./preview/video-frame";
 import { resolvePlaybackLoop, resolvePlaybackStart } from "../../utils/playback-loop";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import { editingFrameDurationMs } from "./editing-frame-rate";
+import { usePreviewRefs } from "./preview/usePreviewRefs";
 import {
-  getPersonSegmentationEngine,
+  usePreviewBackgroundMirror,
+  usePreviewRefMirror,
+  usePreviewStartPositionMirror,
+} from "./preview/usePreviewRefMirrors";
+import { usePreviewVideoCache } from "./preview/usePreviewVideoCache";
+import { usePreviewMedia } from "./preview/usePreviewMedia";
+import { usePreviewMotion } from "./preview/usePreviewMotion";
+import { usePreviewAudio } from "./preview/usePreviewAudio";
+import { usePreviewAudioScheduler } from "./preview/usePreviewAudioScheduler";
+import { usePreviewDirectRender } from "./preview/usePreviewDirectRender";
+import { usePreviewFallbackRender } from "./preview/usePreviewFallbackRender";
+import {
+  decodePreviewClipFrame,
+  fillPreviewBackground as fillPreviewCanvasBackground,
+} from "./preview/preview-decode-frame";
+import {
   getBackgroundRemovalEngine,
-  createMotionAwareOcclusionMask,
-  getStabilizedTransform,
   getVidstabEngine,
 } from "@openreel/core";
 import type {
   GSAPMotionPathPoint,
   MotionPathConfig,
-  SegmentationResult,
 } from "@openreel/core";
-
-interface GPULayer {
-  bitmap: ImageBitmap;
-  transform: ClipTransform;
-}
-
-interface PreparedPreviewFrame {
-  frame: ImageBitmap | HTMLCanvasElement | OffscreenCanvas;
-  cleanup: () => void;
-}
-
-type PreviewClip = Track["clips"][number];
-type PreviewFrameSource = Parameters<typeof drawFrameWithTransform>[1];
-type PreviewCompositeOperation =
-  CanvasRenderingContext2D["globalCompositeOperation"];
-
-const adjustmentBlendOperation = (mode: BlendMode): PreviewCompositeOperation =>
-  mode === "add" || mode === "linear-dodge"
-    ? "lighter"
-    : (mode as PreviewCompositeOperation);
-
-const applyPreviewAdjustmentLayers = async (
-  canvas: OffscreenCanvas,
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  layers: readonly AdjustmentLayer[],
-  time: number,
-): Promise<boolean> => {
-  let applied = false;
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) return false;
-  for (const layer of layers) {
-    if (
-      !layer.enabled ||
-      layer.opacity <= 0 ||
-      time < layer.startTime ||
-      time >= layer.startTime + layer.duration
-    ) continue;
-    const effects = layer.effects.filter((effect) => effect.enabled !== false);
-    if (effects.length === 0) continue;
-    let source: ImageBitmap | null = null;
-    let processed: ImageBitmap | null = null;
-    try {
-      source = await createImageBitmap(canvas);
-      processed = await effectsBridge.processEffectList(source, effects);
-      if (processed.width <= 0 || processed.height <= 0) continue;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
-      ctx.globalCompositeOperation = adjustmentBlendOperation(layer.blendMode);
-      ctx.drawImage(processed, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
-      applied = true;
-    } catch (error) {
-      console.warn(`[Preview] Adjustment layer ${layer.id} failed:`, error);
-    } finally {
-      if (processed && processed !== source) processed.close();
-      source?.close();
-    }
-  }
-  return applied;
-};
-
-const clipNeedsFrameProcessing = (clipId: string): boolean => {
-  const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
-    return true;
-  }
-
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) {
-    return false;
-  }
-
-  if (effectsBridge.getEffects(clipId).some((effect) => effect.enabled)) {
-    return true;
-  }
-
-  return Object.keys(effectsBridge.getColorGrading(clipId)).length > 0;
-};
-
-const clipCssFilterOnly = (clipId: string): string | null => {
-  const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
-    return null;
-  }
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) {
-    return null;
-  }
-  return effectsBridge.getNativeCssFilter(clipId);
-};
-
-const preparePreviewFrame = async (
-  clipId: string,
-  frameCanvas: HTMLCanvasElement | OffscreenCanvas,
-  preferBitmap: boolean,
-  allowCanvasByRef = false,
-): Promise<PreparedPreviewFrame> => {
-  const needsProcessing = clipNeedsFrameProcessing(clipId);
-  if (!preferBitmap && !needsProcessing) {
-    return {
-      frame: frameCanvas,
-      cleanup: () => {},
-    };
-  }
-
-  let frameBitmap: ImageBitmap | null = null;
-  let processedFrame: ImageBitmap | null = null;
-
-  try {
-    frameBitmap = await createImageBitmap(frameCanvas);
-
-    if (!needsProcessing) {
-      return {
-        frame: frameBitmap,
-        cleanup: () => {
-          frameBitmap?.close();
-        },
-      };
-    }
-
-    if (allowCanvasByRef) {
-      const effectsCanvas = await applyEffectsToFrameCanvas(
-        clipId,
-        frameBitmap,
-      );
-      if (effectsCanvas) {
-        const sourceBitmap = frameBitmap;
-        return {
-          frame: effectsCanvas,
-          cleanup: () => {
-            sourceBitmap.close();
-          },
-        };
-      }
-    }
-
-    processedFrame = await applyEffectsToFrame(clipId, frameBitmap);
-    if (processedFrame === frameBitmap) {
-      return {
-        frame: frameBitmap,
-        cleanup: () => {
-          frameBitmap?.close();
-        },
-      };
-    }
-
-    return {
-      frame: processedFrame,
-      cleanup: () => {
-        processedFrame?.close();
-        frameBitmap?.close();
-      },
-    };
-  } catch {
-    processedFrame?.close();
-    frameBitmap?.close();
-
-    return {
-      frame: frameCanvas,
-      cleanup: () => {},
-    };
-  }
-};
-
-const scaleTransformPositionForPreview = (
-  transform: ClipTransform,
-  scale: number,
-): ClipTransform => {
-  if (scale === 1) {
-    return transform;
-  }
-  return {
-    ...transform,
-    position: {
-      x: transform.position.x * scale,
-      y: transform.position.y * scale,
-    },
-  };
-};
-
-const applyStabilizationTransform = (
-  clip: Track["clips"][number],
-  transform: ClipTransform,
-  sourceTime: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  frameWidth: number,
-  frameHeight: number,
-): ClipTransform => {
-  return getStabilizedTransform(
-    clip,
-    transform,
-    sourceTime,
-    {
-      canvasWidth,
-      canvasHeight,
-      sourceWidth: frameWidth,
-      sourceHeight: frameHeight,
-    },
-  ) as ClipTransform;
-};
-
-// The WebGPU renderer maps a layer's texture onto a full-canvas quad, so a
-// scale of {1,1} stretches the source to the canvas. Bake the aspect-fit
-// ratio into the layer scale so GPU compositing letterboxes ("contain") like
-// the Canvas2D path instead of distorting mismatched-aspect clips.
-const computeFitScale = (
-  fitMode: ClipTransform["fitMode"],
-  sourceWidth: number,
-  sourceHeight: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  crop?: ClipTransform["crop"],
-): { x: number; y: number } => {
-  if (canvasWidth <= 0 || canvasHeight <= 0) {
-    return { x: 1, y: 1 };
-  }
-  const visibleSourceWidth = crop ? crop.width * sourceWidth : sourceWidth;
-  const visibleSourceHeight = crop ? crop.height * sourceHeight : sourceHeight;
-  const { width: drawWidth, height: drawHeight } =
-    resolveCanvasFitDimensions(
-      fitMode,
-      visibleSourceWidth,
-      visibleSourceHeight,
-      canvasWidth,
-      canvasHeight,
-    );
-  return { x: drawWidth / canvasWidth, y: drawHeight / canvasHeight };
-};
-
-const ASPECT_PRESETS: Array<{
-  label: string;
-  width: number;
-  height: number;
-}> = [
-  { label: "16:9", width: 1920, height: 1080 },
-  { label: "9:16", width: 1080, height: 1920 },
-  { label: "1:1", width: 1080, height: 1080 },
-  { label: "4:5", width: 1080, height: 1350 },
-  { label: "4:3", width: 1440, height: 1080 },
-  { label: "21:9", width: 2560, height: 1080 },
-];
-
-const aspectLabelFor = (width: number, height: number): string => {
-  const ratio = width / height;
-  let closest = ASPECT_PRESETS[0];
-  let smallestDelta = Infinity;
-  for (const preset of ASPECT_PRESETS) {
-    const delta = Math.abs(preset.width / preset.height - ratio);
-    if (delta < smallestDelta) {
-      smallestDelta = delta;
-      closest = preset;
-    }
-  }
-  return smallestDelta < 0.01 ? closest.label : "Custom";
-};
-
-// Draws `source` cover-fit and Gaussian-blurred across the whole canvas — the
-// blurred letterbox backdrop. Called inline with the live decoded base frame
-// (ImageBitmap or video element) so it always has real pixels, then the
-// contained clip is drawn on top.
-const drawBlurredBackdrop = (
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  source: HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas | ImageBitmap,
-  sourceWidth: number,
-  sourceHeight: number,
-  width: number,
-  height: number,
-): void => {
-  if (sourceWidth <= 0 || sourceHeight <= 0) return;
-  const sourceAspect = sourceWidth / sourceHeight;
-  const canvasAspect = width / height;
-  let drawWidth = width;
-  let drawHeight = height;
-  if (sourceAspect > canvasAspect) {
-    drawHeight = height;
-    drawWidth = height * sourceAspect;
-  } else {
-    drawWidth = width;
-    drawHeight = width / sourceAspect;
-  }
-  const drawX = (width - drawWidth) / 2;
-  const drawY = (height - drawHeight) / 2;
-  const blurPx = Math.max(Math.min(width, height) / 32, 8);
-  ctx.save();
-  ctx.filter = `blur(${blurPx}px)`;
-  ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-  ctx.restore();
-};
-
-const renderFrameWithGPU = async (
-  renderer: Renderer,
-  frame: ImageBitmap,
-  transform: ClipTransform,
-  canvasWidth: number,
-  canvasHeight: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    const device = renderer.getDevice();
-    if (!device) {
-      return null;
-    }
-
-    renderer.beginFrame();
-
-    const texture = renderer.createTextureFromImage(frame);
-
-    const fitScale = computeFitScale(
-      transform.fitMode,
-      frame.width,
-      frame.height,
-      canvasWidth,
-      canvasHeight,
-      transform.crop,
-    );
-    const gpuTransform = {
-      position: transform.position,
-      scale: {
-        x: transform.scale.x * fitScale.x,
-        y: transform.scale.y * fitScale.y,
-      },
-      rotation: transform.rotation,
-      anchor: transform.anchor,
-      opacity: transform.opacity,
-      borderRadius: transform.borderRadius,
-      crop: transform.crop,
-    };
-
-    renderer.renderLayer({
-      texture,
-      transform: gpuTransform,
-      effects: [],
-      opacity: transform.opacity,
-      borderRadius: transform.borderRadius || 0,
-    });
-
-    const result = await renderer.endFrame();
-    renderer.releaseTexture(texture);
-
-    return result;
-  } catch {
-    return null;
-  }
-};
-
-const renderAllLayersWithGPU = async (
-  renderer: Renderer,
-  layers: GPULayer[],
-  canvasWidth: number,
-  canvasHeight: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    const device = renderer.getDevice();
-
-    if (!device || layers.length === 0) {
-      return null;
-    }
-
-    renderer.beginFrame();
-
-    const textures: ReturnType<typeof renderer.createTextureFromImage>[] = [];
-
-    for (let i = 0; i < layers.length; i++) {
-      const layer = layers[i];
-
-      const texture = renderer.createTextureFromImage(layer.bitmap);
-      textures.push(texture);
-
-      const fitScale = computeFitScale(
-        layer.transform.fitMode,
-        layer.bitmap.width,
-        layer.bitmap.height,
-        canvasWidth,
-        canvasHeight,
-        layer.transform.crop,
-      );
-      const gpuTransform = {
-        position: layer.transform.position,
-        scale: {
-          x: layer.transform.scale.x * fitScale.x,
-          y: layer.transform.scale.y * fitScale.y,
-        },
-        rotation: layer.transform.rotation,
-        anchor: layer.transform.anchor,
-        opacity: layer.transform.opacity,
-        borderRadius: layer.transform.borderRadius,
-        crop: layer.transform.crop,
-      };
-
-      renderer.renderLayer({
-        texture,
-        transform: gpuTransform,
-        effects: [],
-        opacity: layer.transform.opacity,
-        borderRadius: layer.transform.borderRadius || 0,
-      });
-    }
-
-    const result = await renderer.endFrame();
-
-    for (const texture of textures) {
-      renderer.releaseTexture(texture);
-    }
-
-    return result;
-  } catch (e) {
-    console.error("[renderAllLayersWithGPU] Error:", e);
-    return null;
-  }
-};
-
-const hasBehindSubjectText = (textClips: TextClip[]): boolean =>
-  textClips.some((textClip) => textClip.behindSubject);
-
-const getBehindSubjectStreamId = (
-  tracks: readonly Track[],
-  time: number,
-  getMediaItem: (mediaId: string) => MediaItem | undefined,
-): string => {
-  const activeSourceIds = tracks
-    .filter((track) => !track.hidden)
-    .flatMap((track) =>
-      track.clips
-        .filter(
-          (clip) =>
-            time >= clip.startTime &&
-            time < clip.startTime + clip.duration &&
-            getMediaItemCapabilities(getMediaItem(clip.mediaId)).visual,
-        )
-        .map((clip) => clip.id),
-    )
-    .sort();
-  return `editor:text-behind-subject:${activeSourceIds.join("|") || "canvas"}`;
-};
-
-const subjectMaskRequestCache = new WeakMap<
-  ImageBitmap,
-  Map<string, Promise<SegmentationResult | null>>
->();
-const subjectOcclusionMaskCache = new WeakMap<
-  ImageBitmap,
-  WeakMap<SegmentationResult, ImageData>
->();
-
-const getSubjectMaskForFrame = (
-  subjectFrame: ImageBitmap,
-  time: number,
-  realtime: boolean,
-  streamId: string,
-): Promise<SegmentationResult | null> => {
-  let requests = subjectMaskRequestCache.get(subjectFrame);
-  if (!requests) {
-    requests = new Map();
-    subjectMaskRequestCache.set(subjectFrame, requests);
-  }
-  const key = `${streamId}:${time}:${Number(realtime)}`;
-  const cached = requests.get(key);
-  if (cached) return cached;
-  const request = getPersonSegmentationEngine().getPersonMask(subjectFrame, {
-    timestampMs: time * 1000,
-    streamId,
-    realtime,
-  });
-  requests.set(key, request);
-  return request;
-};
-
-const createTransparentCanvasSource = (
-  width: number,
-  height: number,
-): HTMLCanvasElement => {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext("2d")?.clearRect(0, 0, width, height);
-  return canvas;
-};
-
-const createTransparentImageBitmap = async (
-  width: number,
-  height: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    return await createImageBitmap(createTransparentCanvasSource(width, height));
-  } catch {
-    return null;
-  }
-};
-
-const captureSubjectFrame = async (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    return await createImageBitmap(
-      ctx.canvas as HTMLCanvasElement | OffscreenCanvas,
-      0,
-      0,
-      width,
-      height,
-    );
-  } catch {
-    return null;
-  }
-};
-
-const applySubjectOcclusionMask = (
-  textCtx: CanvasRenderingContext2D,
-  subjectFrame: ImageBitmap | null,
-  canvasWidth: number,
-  canvasHeight: number,
-  maskResult: SegmentationResult | null,
-): boolean => {
-  if (!subjectFrame || !maskResult) return false;
-
-  try {
-    const maskCanvas = new OffscreenCanvas(maskResult.width, maskResult.height);
-    const maskCtx = maskCanvas.getContext("2d");
-    if (!maskCtx) return false;
-
-    let occlusionMask = subjectOcclusionMaskCache
-      .get(subjectFrame)
-      ?.get(maskResult);
-    if (!occlusionMask) {
-      occlusionMask = maskResult.mask;
-    }
-    if (
-      !subjectOcclusionMaskCache.get(subjectFrame)?.has(maskResult) &&
-      maskResult.referenceWidth > 0 &&
-      maskResult.referenceHeight > 0 &&
-      maskResult.referenceRgba.length ===
-        maskResult.referenceWidth * maskResult.referenceHeight * 4
-    ) {
-      try {
-        const currentReferenceCanvas = new OffscreenCanvas(
-          maskResult.referenceWidth,
-          maskResult.referenceHeight,
-        );
-        const currentReferenceCtx = currentReferenceCanvas.getContext("2d", {
-          willReadFrequently: true,
-        });
-        if (currentReferenceCtx) {
-          currentReferenceCtx.drawImage(
-            subjectFrame,
-            0,
-            0,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          );
-          const currentRgba = currentReferenceCtx.getImageData(
-            0,
-            0,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          ).data;
-          const motionAwareMaskRgba = createMotionAwareOcclusionMask(
-            maskResult.mask.data,
-            maskResult.width,
-            maskResult.height,
-            maskResult.referenceRgba,
-            currentRgba,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          );
-          occlusionMask = new ImageData(maskResult.width, maskResult.height);
-          occlusionMask.data.set(motionAwareMaskRgba);
-        }
-      } catch {
-        // Keep using the exact matte if frame readback or motion estimation
-        // fails. Dropping the whole text layer here creates a visible blink.
-        occlusionMask = maskResult.mask;
-      }
-    }
-
-    let frameMasks = subjectOcclusionMaskCache.get(subjectFrame);
-    if (!frameMasks) {
-      frameMasks = new WeakMap();
-      subjectOcclusionMaskCache.set(subjectFrame, frameMasks);
-    }
-    frameMasks.set(maskResult, occlusionMask);
-
-    maskCtx.putImageData(occlusionMask, 0, 0);
-    textCtx.save();
-    textCtx.globalCompositeOperation = "destination-out";
-    textCtx.imageSmoothingEnabled = true;
-    textCtx.imageSmoothingQuality = "high";
-    textCtx.drawImage(maskCanvas, 0, 0, canvasWidth, canvasHeight);
-    textCtx.restore();
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const renderOverlayLayerWithEffects = async (
-  ctx: CanvasRenderingContext2D,
-  clipId: string,
-  canvasWidth: number,
-  canvasHeight: number,
-  render: (layerCtx: CanvasRenderingContext2D) => void | Promise<void>,
-): Promise<void> => {
-  if (!clipNeedsFrameProcessing(clipId)) {
-    await render(ctx);
-    return;
-  }
-  const layerCanvas = document.createElement("canvas");
-  layerCanvas.width = canvasWidth;
-  layerCanvas.height = canvasHeight;
-  const layerCtx = layerCanvas.getContext("2d");
-  if (!layerCtx) return;
-  await render(layerCtx);
-  const prepared = await preparePreviewFrame(
-    clipId,
-    layerCanvas,
-    false,
-    true,
-  );
-  try {
-    ctx.drawImage(prepared.frame, 0, 0, canvasWidth, canvasHeight);
-  } finally {
-    prepared.cleanup();
-  }
-};
-
-const renderShapeClipWithEffects = async (
-  ctx: CanvasRenderingContext2D,
-  shapeClip: ShapeClip | SVGClip | StickerClip,
-  canvasWidth: number,
-  canvasHeight: number,
-  time: number,
-): Promise<void> => {
-  await renderOverlayLayerWithEffects(
-    ctx,
-    shapeClip.id,
-    canvasWidth,
-    canvasHeight,
-    (layerCtx) =>
-      renderShapeClipToCanvas(
-        layerCtx,
-        shapeClip,
-        canvasWidth,
-        canvasHeight,
-        time,
-      ),
-  );
-};
-
-const renderTextClipWithSubjectMask = async (
-  ctx: CanvasRenderingContext2D,
-  textClip: TextClip,
-  canvasWidth: number,
-  canvasHeight: number,
-  time: number,
-  subjectFrame: ImageBitmap | null,
-  realtime = true,
-  streamId = "editor:text-behind-subject:canvas",
-): Promise<void> => {
-  let subjectMask: SegmentationResult | null = null;
-  if (textClip.behindSubject && subjectFrame) {
-    const segEngine = getPersonSegmentationEngine();
-    if (segEngine.isInitialized()) {
-      subjectMask = await getSubjectMaskForFrame(
-        subjectFrame,
-        time,
-        realtime,
-        streamId,
-      );
-    }
-    // During the worker's first realtime inference, keep the text hidden
-    // instead of flashing it in front of the subject for one or two frames.
-    if (!subjectMask && realtime) return;
-  }
-
-  const renderTextLayer = (targetCtx: CanvasRenderingContext2D) =>
-    renderOverlayLayerWithEffects(
-      targetCtx,
-      textClip.id,
-      canvasWidth,
-      canvasHeight,
-      (layerCtx) =>
-        renderTextClipToCanvas(
-          layerCtx,
-          textClip,
-          canvasWidth,
-          canvasHeight,
-          time,
-        ),
-    );
-
-  if (!textClip.behindSubject || !subjectFrame || !subjectMask) {
-    await renderTextLayer(ctx);
-    return;
-  }
-
-  const textLayerCanvas = document.createElement("canvas");
-  textLayerCanvas.width = canvasWidth;
-  textLayerCanvas.height = canvasHeight;
-  const textLayerCtx = textLayerCanvas.getContext("2d");
-  if (!textLayerCtx) return;
-  await renderTextLayer(textLayerCtx);
-  if (
-    !applySubjectOcclusionMask(
-      textLayerCtx,
-      subjectFrame,
-      canvasWidth,
-      canvasHeight,
-      subjectMask,
-    )
-  ) {
-    return;
-  }
-  ctx.drawImage(textLayerCanvas, 0, 0, canvasWidth, canvasHeight);
-};
-
-interface ClipWithPlaceholder {
-  isPlaceholder?: boolean;
-}
-
 export const Preview: React.FC = () => {
   const compact = useCompactEditor();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const videoAreaRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<number | null>(null);
-  const renderBridgeInitialized = useRef<boolean>(false);
-  const lastGoodFrameRef = useRef<ImageBitmap | null>(null);
-  const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null);
-  const decodeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const decodeDebounceResolveRef = useRef<((value: ImageBitmap | null) => void) | null>(
-    null,
-  );
-  const decodeRequestSeqRef = useRef(0);
-  const scrubVideoReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const lastPreviewRenderTimeRef = useRef(0);
-  const offscreenCtxRef = useRef<OffscreenCanvasRenderingContext2D | null>(
-    null,
-  );
-
-  // Native video element for hardware-accelerated playback (much faster for 4K)
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-  const videoUrlRef = useRef<string | null>(null);
-  const currentVideoMediaIdRef = useRef<string | null>(null);
-  const nativePlaybackActiveRef = useRef<boolean>(false);
-  const nativeVideoCacheRef = useRef<
-    Map<string, { video: HTMLVideoElement; url: string }>
-  >(new Map());
-  const nativeImageBitmapCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
-
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const audioGraphRef = useRef<ReturnType<typeof getRealtimeAudioGraph> | null>(
-    null,
-  );
-  const audioBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
-  const processedAudioBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
-  const noAudioBufferRef = useRef<Set<string>>(new Set());
-
-  const getAudioBufferCacheKey = (mediaId: string, audioTrackIndex?: number): string =>
-    `${mediaId}:${audioTrackIndex ?? 0}`;
-
-  const loadAudioBuffer = async (
-    audioContext: AudioContext | BaseAudioContext,
-    blob: Blob,
-    audioTrackIndex: number = 0,
-  ): Promise<AudioBuffer | null> => {
-    try {
-      const { extractAudioWav } = await import("@openreel/core/media");
-      const wavBlob = await extractAudioWav(blob, audioTrackIndex);
-      const arrayBuffer = await wavBlob.arrayBuffer();
-      return await audioContext.decodeAudioData(arrayBuffer);
-    } catch (error) {
-      if (error instanceof Error && error.name === "NoAudioStreamError") {
-        return null;
-      }
-    }
-
-    if (audioTrackIndex === 0) {
-      try {
-        const arrayBuffer = await blob.arrayBuffer();
-        return await audioContext.decodeAudioData(arrayBuffer);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  };
-
-  const getAudioEffectSignature = useCallback((effects: Effect[]): string =>
-    JSON.stringify(
-      effects.map((effect) => ({
-        id: effect.id,
-        type: effect.type,
-        enabled: effect.enabled,
-        params: effect.params,
-        metadata: effect.metadata,
-      })),
-    ), []);
-
-  const getPreviewAudioBufferForEffects = useCallback(
-    async (
-      audioBuffer: AudioBuffer,
-      baseCacheKey: string,
-      effects: Effect[],
-    ): Promise<{ audioBuffer: AudioBuffer; effects: Effect[] }> => {
-      const previewEffects = getPreviewAudioEffects(
-        effects.filter((effect) => effect.enabled),
-      );
-      const { profileAwareNoiseEffects, realtimeEffects } =
-        splitProfileAwareNoiseReductionEffects(previewEffects);
-
-      if (profileAwareNoiseEffects.length === 0) {
-        return { audioBuffer, effects: realtimeEffects };
-      }
-
-      const processedCacheKey = `${baseCacheKey}:profile-denoise:${getAudioEffectSignature(profileAwareNoiseEffects)}`;
-      const cached = processedAudioBufferCacheRef.current.get(processedCacheKey);
-      if (cached) {
-        return { audioBuffer: cached, effects: realtimeEffects };
-      }
-
-      const effectsEngine = await initializeAudioEffectsEngine();
-      let processedBuffer = audioBuffer;
-
-      for (const effect of profileAwareNoiseEffects) {
-        const params = effect.params as AudioEffectParams["noiseReduction"];
-        if (!params.profile) {
-          continue;
-        }
-
-        processedBuffer = await effectsEngine.applyNoiseReductionWithProfileData(
-          processedBuffer,
-          params.profile,
-          params.reduction ?? 0.5,
-          params.focus ?? "balanced",
-          params.threshold ?? -40,
-        );
-      }
-
-      processedAudioBufferCacheRef.current.set(processedCacheKey, processedBuffer);
-      return { audioBuffer: processedBuffer, effects: realtimeEffects };
-    },
-    [getAudioEffectSignature],
-  );
-
-  const getResolvedClipAudioEffects = useCallback((clip: PreviewClip): Effect[] => {
-    return resolveTimelineClipAudioEffects(clip, {
-      tracks: timelineTracksRef.current,
-    });
-  }, []);
-
-  const getResolvedClipVolumeAutomation = useCallback((clip: PreviewClip) =>
-    resolveClipVolumeAutomation(clip, {
-      tracks: timelineTracksRef.current,
-    }), []);
-
-  const rendererRef = useRef<Renderer | null>(null);
-  const rendererInitializedRef = useRef<boolean>(false);
-  const motionRendererRef = useRef<MotionRenderer | null>(null);
-  const motionAssetBitmapCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
 
   useEffect(() => () => {
     motionRendererRef.current?.dispose();
@@ -1017,42 +191,12 @@ export const Preview: React.FC = () => {
 
   const isDark = useThemeStore((state) => state.isDark);
 
-  // The preview canvas background / letterbox bars. A project "color" canvas
-  // fill overrides the theme stage so the preview matches the exported video;
-  // otherwise the bars follow the theme (--screen-bg token). Kept in a ref so
-  // every render path (scrub, playback, transitions) picks up the current
-  // value without re-creating callbacks. (Blur fill draws a cover-fit blurred
-  // backdrop of the base clip in both preview and export.)
-  const previewBgRef = useRef<string>(isDark ? "#000000" : "#ffffff");
-
   // Canvas interaction state for resize/move
   const [interactionMode, setInteractionMode] =
     useState<InteractionMode>("none");
   const [activeHandle, setActiveHandle] = useState<HandlePosition | null>(null);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
-  const interactionStartRef = useRef<{
-    x: number;
-    y: number;
-    transform: { x: number; y: number; scaleX: number; scaleY: number };
-  } | null>(null);
-  const pendingTransformRef = useRef<{
-    clipId: string;
-    transform: {
-      position?: { x: number; y: number };
-      scale?: { x: number; y: number };
-    };
-  } | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-
-  // Track if we're currently interacting to prevent re-renders during resize/move
-  const isInteractingRef = useRef<boolean>(false);
-  // Throttle store updates during interaction (update at most every 32ms ~30fps)
-  const lastStoreUpdateRef = useRef<number>(0);
   const STORE_UPDATE_THROTTLE_MS = 32;
-  // Throttle playhead updates during playback to reduce React re-renders.
-  // The interval follows the project timebase so 60 fps projects publish a
-  // 60 Hz playhead instead of being capped at 30 Hz.
-  const lastPlayheadUpdateRef = useRef<number>(0);
   // Live transform state for immediate visual feedback during interaction
   const [liveTransform, setLiveTransform] = useState<{
     position: { x: number; y: number };
@@ -1067,89 +211,6 @@ export const Preview: React.FC = () => {
   const [interactionTargetType, setInteractionTargetType] = useState<
     "clip" | "text-clip" | "shape-clip" | null
   >(null);
-  const interactionTargetIdRef = useRef<string | null>(null);
-
-  // Video element cache for native hardware-accelerated frame decoding (thumbnails/scrubbing)
-  // Much more reliable than MediaBunny's CanvasSink for random-access seeking
-  const videoElementCacheRef = useRef<
-    Map<string, { video: HTMLVideoElement; url: string; lastUsed: number }>
-  >(new Map());
-
-  const releaseVideoElement = useCallback(
-    (entry: { video: HTMLVideoElement; url: string }): void => {
-      const { video, url } = entry;
-      video.pause();
-      video.removeAttribute("src");
-      video.onloadedmetadata = null;
-      video.onerror = null;
-      video.load();
-      URL.revokeObjectURL(url);
-    },
-    [],
-  );
-
-  const evictOldestVideoElement = useCallback((): void => {
-    let oldestKey = "";
-    let oldestTime = Infinity;
-    for (const [key, entry] of videoElementCacheRef.current.entries()) {
-      if (entry.lastUsed < oldestTime) {
-        oldestTime = entry.lastUsed;
-        oldestKey = key;
-      }
-    }
-
-    if (!oldestKey) return;
-
-    const oldEntry = videoElementCacheRef.current.get(oldestKey);
-    if (!oldEntry) return;
-
-    releaseVideoElement(oldEntry);
-    videoElementCacheRef.current.delete(oldestKey);
-  }, [releaseVideoElement]);
-
-  const cancelPendingScrubDecode = useCallback((): void => {
-    if (decodeDebounceRef.current) {
-      clearTimeout(decodeDebounceRef.current);
-      decodeDebounceRef.current = null;
-    }
-    decodeDebounceResolveRef.current?.(null);
-    decodeDebounceResolveRef.current = null;
-    decodeRequestSeqRef.current += 1;
-  }, []);
-
-  const releaseScrubVideoElements = useCallback((): void => {
-    if (scrubVideoReleaseTimerRef.current) {
-      clearTimeout(scrubVideoReleaseTimerRef.current);
-      scrubVideoReleaseTimerRef.current = null;
-    }
-    cancelPendingScrubDecode();
-    for (const entry of videoElementCacheRef.current.values()) {
-      releaseVideoElement(entry);
-    }
-    videoElementCacheRef.current.clear();
-  }, [cancelPendingScrubDecode, releaseVideoElement]);
-
-  const scheduleScrubVideoRelease = useCallback((): void => {
-    if (scrubVideoReleaseTimerRef.current) {
-      clearTimeout(scrubVideoReleaseTimerRef.current);
-    }
-    scrubVideoReleaseTimerRef.current = setTimeout(() => {
-      releaseScrubVideoElements();
-    }, 350);
-  }, [releaseScrubVideoElements]);
-
-  // Persistent decoder cache for efficient playback (legacy - kept for fallback)
-  const decoderCacheRef = useRef<
-    Map<
-      string,
-      {
-        input: { [Symbol.dispose]?: () => void };
-        sink: unknown;
-        mediaId: string;
-        lastUsed: number;
-      }
-    >
-  >(new Map());
 
   // Track canvas size changes for resize handles positioning
   useEffect(() => {
@@ -1191,140 +252,34 @@ export const Preview: React.FC = () => {
   const fontRevision = useProjectFonts(project);
   const getOriginalMediaItem = useProjectStore((state) => state.getMediaItem);
   const proxySourceRevision = usePreviewProxyStore((state) => state.revision);
+  const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
+  const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
+  const getMaskEngine = useEngineStore((state) => state.getMaskEngine);
   // The revision restarts visual decoding when proxies are created/toggled/removed.
-  const getMediaItem = useCallback((id: string) => {
-    const item = getOriginalMediaItem(id);
-    return item ? previewProxyCache.resolve(project.id, item) : undefined;
-    // Source changes must restart callbacks even though the cache lookup is live.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getOriginalMediaItem, project.id, proxySourceRevision]);
-  const failProxyPlayback = useCallback((id: string, blob: Blob | null) => {
-    if (blob) previewProxyCache.failPlayback(id, blob);
-  }, []);
-  const mediaClipHasVisual = useCallback(
-    (clip: PreviewClip) =>
-      getMediaItemCapabilities(getMediaItem(clip.mediaId)).visual,
-    [getMediaItem],
-  );
-  const mediaClipHasAudio = useCallback(
-    (clip: PreviewClip) =>
-      getMediaItemCapabilities(getOriginalMediaItem(clip.mediaId)).audio,
-    [getOriginalMediaItem],
-  );
+  const {
+    allShapeClips,
+    allSubtitles,
+    allTextClips,
+    clipMasksById,
+    drawClipFrame,
+    failProxyPlayback,
+    getMediaItem,
+    mediaClipHasAudio,
+    mediaClipHasVisual,
+  } = usePreviewMedia({
+    project,
+    proxySourceRevision,
+    getOriginalMediaItem,
+    getTitleEngine,
+    getGraphicsEngine,
+    getMaskEngine,
+  });
 
   useEffect(() => {
     const cachedFrame = lastGoodFrameRef.current;
     lastGoodFrameRef.current = null;
     cachedFrame?.close();
   }, [project, proxySourceRevision]);
-
-  useEffect(() => {
-    releaseScrubVideoElements();
-    for (const entry of decoderCacheRef.current.values()) entry.input[Symbol.dispose]?.();
-    decoderCacheRef.current.clear();
-    for (const entry of nativeVideoCacheRef.current.values()) releaseVideoElement(entry);
-    nativeVideoCacheRef.current.clear();
-  }, [proxySourceRevision, releaseScrubVideoElements, releaseVideoElement]);
-
-  // Get text clips from TitleEngine
-  const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
-  const allTextClips = useMemo(() => {
-    if (project.textClips) return project.textClips;
-    const titleEngine = getTitleEngine();
-    return titleEngine?.getAllTextClips() || [];
-  }, [getTitleEngine, project.textClips]);
-
-  const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
-  const allShapeClips = useMemo(() => {
-    if (
-      project.shapeClips ||
-      project.svgClips ||
-      project.stickerClips
-    ) {
-      return [
-        ...(project.shapeClips ?? []),
-        ...(project.svgClips ?? []),
-        ...(project.stickerClips ?? []),
-      ];
-    }
-    const graphicsEngine = getGraphicsEngine();
-    const shapes = graphicsEngine?.getAllShapeClips() || [];
-    const svgs = graphicsEngine?.getAllSVGClips() || [];
-    const stickers = graphicsEngine?.getAllStickerClips() || [];
-    return [...shapes, ...svgs, ...stickers];
-  }, [
-    getGraphicsEngine,
-    project.shapeClips,
-    project.stickerClips,
-    project.svgClips,
-  ]);
-
-  const getMaskEngine = useEngineStore((state) => state.getMaskEngine);
-  const clipMasksById = useMemo(() => {
-    const byClip = new Map<string, Mask[]>();
-    for (const mask of project.masks ?? []) {
-      const existing = byClip.get(mask.clipId) ?? [];
-      byClip.set(mask.clipId, [...existing, mask]);
-    }
-    return byClip;
-  }, [project.masks]);
-
-  const drawClipFrame = useCallback(
-    async (
-      ctx: CanvasRenderingContext2D,
-      clipId: string,
-      frame: PreviewFrameSource,
-      transform: ClipTransform,
-      canvasWidth: number,
-      canvasHeight: number,
-      time: number,
-      filter?: string,
-    ) => {
-      const masks = clipMasksById.get(clipId) ?? [];
-      if (masks.length === 0) {
-        drawFrameWithTransform(
-          ctx,
-          frame,
-          transform,
-          canvasWidth,
-          canvasHeight,
-          filter,
-        );
-        return;
-      }
-
-      try {
-        const maskEngine = await getMaskEngine();
-        await drawFrameWithMasks({
-          ctx,
-          frame,
-          transform,
-          canvasWidth,
-          canvasHeight,
-          masks,
-          maskEngine,
-          time,
-          filter,
-        });
-      } catch (error) {
-        console.warn(`[Preview] Failed to apply masks to ${clipId}:`, error);
-        drawFrameWithTransform(
-          ctx,
-          frame,
-          transform,
-          canvasWidth,
-          canvasHeight,
-          filter,
-        );
-      }
-    },
-    [clipMasksById, getMaskEngine],
-  );
-
-  // Get subtitles from project timeline
-  const allSubtitles = useMemo(() => {
-    return project.timeline.subtitles || [];
-  }, [project.timeline.subtitles]);
 
   const updateClipTransform = useProjectStore(
     (state) => state.updateClipTransform,
@@ -1344,19 +299,7 @@ export const Preview: React.FC = () => {
 
   const canvasFillMode = project.timeline.backgroundFillMode;
   const canvasFillColor = project.timeline.layoutBackgroundColor;
-  useEffect(() => {
-    if (canvasFillMode === "color" && canvasFillColor) {
-      previewBgRef.current = canvasFillColor;
-      return;
-    }
-    const screenBg =
-      typeof window !== "undefined"
-        ? getComputedStyle(document.documentElement)
-            .getPropertyValue("--screen-bg")
-            .trim()
-        : "";
-    previewBgRef.current = screenBg || (isDark ? "#000000" : "#ffffff");
-  }, [canvasFillMode, canvasFillColor, isDark]);
+
 
   const playbackQuality = useUIStore((state) => state.playbackQuality);
   const setPlaybackQuality = useUIStore((state) => state.setPlaybackQuality);
@@ -1371,10 +314,120 @@ export const Preview: React.FC = () => {
     [settings.width, settings.height, playbackQuality],
   );
 
-  const rendererInitialSizeRef = useRef({
-    width: previewRes.width,
-    height: previewRes.height,
+  const {
+    playheadPosition,
+    playbackState,
+    playbackLockedReason,
+    playbackRate,
+    loopEnabled,
+    loopStart,
+    loopEnd,
+    isScrubbing,
+    pause,
+    togglePlayback,
+    seekTo,
+    seekRelative,
+    setPlayheadPosition,
+  } = useTimelineStore();
+  const isPlaying = playbackState === "playing";
+  const renderFrameDirectlyInitializer = {
+    current: async (_time: number): Promise<boolean> => false,
+  };
+  const refs = usePreviewRefs({
+    previewBg: isDark ? "#000000" : "#ffffff",
+    rendererInitialSize: { width: previewRes.width, height: previewRes.height },
+    timelineTracks,
+    canvasFillMode,
+    canvasFillColor,
+    allTextClips,
+    allShapeClips,
+    allSubtitles,
+    playbackRate,
+    playheadPosition,
+    renderFrameDirectly: (time) => renderFrameDirectlyInitializer.current(time),
+    isPlaying,
+    project,
+    proxySourceRevision,
   });
+  const {
+    canvasRef,
+    containerRef,
+    videoAreaRef,
+    overlayRef,
+    animationRef,
+    renderBridgeInitialized,
+    lastGoodFrameRef,
+    offscreenCanvasRef,
+    decodeDebounceRef,
+    decodeDebounceResolveRef,
+    decodeRequestSeqRef,
+    scrubVideoReleaseTimerRef,
+    lastPreviewRenderTimeRef,
+    offscreenCtxRef,
+    videoElementRef,
+    videoUrlRef,
+    currentVideoMediaIdRef,
+    nativePlaybackActiveRef,
+    nativeVideoCacheRef,
+    nativeImageBitmapCacheRef,
+    audioSourceRef,
+    gainNodeRef,
+    audioGraphRef,
+    audioBufferCacheRef,
+    processedAudioBufferCacheRef,
+    noAudioBufferRef,
+    rendererRef,
+    rendererInitializedRef,
+    motionRendererRef,
+    motionAssetBitmapCacheRef,
+    previewBgRef,
+    interactionStartRef,
+    pendingTransformRef,
+    rafIdRef,
+    isInteractingRef,
+    lastStoreUpdateRef,
+    lastPlayheadUpdateRef,
+    interactionTargetIdRef,
+    videoElementCacheRef,
+    decoderCacheRef,
+    rendererInitialSizeRef,
+    timelineTracksRef,
+    canvasFillModeRef,
+    canvasFillColorRef,
+    allTextClipsRef,
+    allShapeClipsRef,
+    allSubtitlesRef,
+    isScrubbingRef,
+    rateRef,
+    startPositionRef,
+    playbackResourcesRef,
+    imageBitmapCacheRef,
+    failedImageDecodesRef,
+    audioWarmupTimerRef,
+    audioWarmupIdleRef,
+    renderFrameDirectlyRef,
+    isPlayingRef,
+    playheadPositionRef,
+    lastProjectForRenderRef,
+    lastProxyRevisionForRenderRef,
+    lastPlayheadForRenderRef,
+    modifiedRenderTimerRef,
+    renderInFlightRef,
+    pendingRenderTimeRef,
+  } = refs;
+  const {
+    cancelPendingScrubDecode,
+    evictOldestVideoElement,
+    releaseScrubVideoElements,
+    releaseVideoElement,
+    scheduleScrubVideoRelease,
+  } = usePreviewVideoCache({ refs, proxySourceRevision });
+  usePreviewBackgroundMirror(
+    refs.previewBgRef,
+    canvasFillMode,
+    canvasFillColor,
+    isDark,
+  );
 
   const previewFrameSize = useMemo(() => {
     if (videoAreaSize.width <= 0 || videoAreaSize.height <= 0) {
@@ -1407,44 +460,13 @@ export const Preview: React.FC = () => {
       height: height * zoomLevel,
     };
   }, [settings.height, settings.width, videoAreaSize, zoomLevel]);
-
-  // Keep a ref to timelineTracks for use in playback effect without causing re-runs
-  const timelineTracksRef = useRef(timelineTracks);
-  useEffect(() => {
-    timelineTracksRef.current = timelineTracks;
-  }, [timelineTracks]);
-
-  // Current canvas fill mode in a ref so the (stable) preview-background
-  // helper always reads the latest value even when the big render callbacks
-  // captured it before the mode changed.
-  const canvasFillModeRef = useRef(canvasFillMode);
-  useEffect(() => {
-    canvasFillModeRef.current = canvasFillMode;
-  }, [canvasFillMode]);
-  const canvasFillColorRef = useRef(canvasFillColor);
-  useEffect(() => {
-    canvasFillColorRef.current = canvasFillColor;
-  }, [canvasFillColor]);
-
-  // Keep a ref to allTextClips for use in playback effect
-  const allTextClipsRef = useRef(allTextClips);
-  useEffect(() => {
-    allTextClipsRef.current = allTextClips;
-  }, [allTextClips]);
-
-  const allShapeClipsRef = useRef(allShapeClips);
-  useEffect(() => {
-    allShapeClipsRef.current = allShapeClips;
-  }, [allShapeClips]);
-
-  // Keep a ref to allSubtitles for use in playback effect
-  const allSubtitlesRef = useRef(allSubtitles);
-  useEffect(() => {
-    allSubtitlesRef.current = allSubtitles;
-  }, [allSubtitles]);
-
-  // Keep a ref to isScrubbing for use in playback loop
-  const isScrubbingRef = useRef(false);
+  usePreviewRefMirror(refs.timelineTracksRef, timelineTracks);
+  usePreviewRefMirror(refs.canvasFillModeRef, canvasFillMode);
+  usePreviewRefMirror(refs.canvasFillColorRef, canvasFillColor);
+  usePreviewRefMirror(refs.allTextClipsRef, allTextClips);
+  usePreviewRefMirror(refs.allShapeClipsRef, allShapeClips);
+  usePreviewRefMirror(refs.allSubtitlesRef, allSubtitles);
+  usePreviewRefMirror(refs.isScrubbingRef, isScrubbing);
 
   const selectedItems = useUIStore((state) => state.selectedItems);
   const cropMode = useUIStore((state) => state.cropMode);
@@ -1454,28 +476,6 @@ export const Preview: React.FC = () => {
   const motionPathMode = useUIStore((state) => state.motionPathMode);
   const motionPathClipId = useUIStore((state) => state.motionPathClipId);
   const select = useUIStore((state) => state.select);
-
-  const {
-    playheadPosition,
-    playbackState,
-    playbackLockedReason,
-    playbackRate,
-    loopEnabled,
-    loopStart,
-    loopEnd,
-    isScrubbing,
-    pause,
-    togglePlayback,
-    seekTo,
-    seekRelative,
-    setPlayheadPosition,
-  } = useTimelineStore();
-
-  useEffect(() => {
-    isScrubbingRef.current = isScrubbing;
-  }, [isScrubbing]);
-
-  const isPlaying = playbackState === "playing";
 
   const motionPathClip = React.useMemo(() => {
     if (!motionPathMode || !motionPathClipId) return null;
@@ -1729,35 +729,9 @@ export const Preview: React.FC = () => {
     }
   }, [previewRes.width, previewRes.height]);
 
-  const rateRef = useRef(playbackRate);
-  const startPositionRef = useRef(playheadPosition);
+  usePreviewRefMirror(refs.rateRef, playbackRate);
 
-  // MediaBunny playback resources - map of clipId to resources for multi-track playback
-  const playbackResourcesRef = useRef<
-    Map<
-      string,
-      {
-        input: { [Symbol.dispose]?: () => void };
-        sink: unknown;
-        mediaId: string;
-        clipId: string;
-        trackIndex: number;
-      }
-    >
-  >(new Map());
-
-  const imageBitmapCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
-  const failedImageDecodesRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    rateRef.current = playbackRate;
-  }, [playbackRate]);
-
-  useEffect(() => {
-    if (!isPlaying) {
-      startPositionRef.current = playheadPosition;
-    }
-  }, [isPlaying, playheadPosition]);
+  usePreviewStartPositionMirror(refs.startPositionRef, isPlaying, playheadPosition);
 
   const cleanupPlaybackResources = useCallback(() => {
     const resources = playbackResourcesRef.current;
@@ -1802,1457 +776,99 @@ export const Preview: React.FC = () => {
     }
   }, [isMuted]);
 
-  const resolveMotionImageAsset = useCallback(
-    async (asset: MotionAsset): Promise<ImageBitmap | null> => {
-      const cacheKey = asset.mediaId
-        ? `media:${asset.mediaId}`
-        : asset.url
-          ? `url:${asset.url}`
-          : `asset:${asset.id}`;
-      const cached = motionAssetBitmapCacheRef.current.get(cacheKey);
-      if (cached) return cached;
-
-      let blob: Blob | null = null;
-      if (asset.mediaId) {
-        const mediaItem = getMediaItem(asset.mediaId);
-        if (mediaItem?.type === "image" && mediaItem.blob) {
-          blob = mediaItem.blob;
-        }
-      } else if (asset.url) {
-        try {
-          const response = await fetch(asset.url);
-          if (response.ok) {
-            blob = await response.blob();
-          }
-        } catch {
-          return null;
-        }
-      }
-
-      if (!blob) return null;
-      try {
-        const bitmap = await createImageBitmap(blob);
-        motionAssetBitmapCacheRef.current.set(cacheKey, bitmap);
-        return bitmap;
-      } catch {
-        return null;
-      }
-    },
-    [getMediaItem],
-  );
-
-  const hasActiveMotionInstances = useCallback(
-    (time: number, trackId?: string): boolean =>
-      (project.motionInstances ?? []).some((instance) => {
-        if (trackId && instance.trackId !== trackId) return false;
-        return time >= instance.startTime && time < instance.startTime + instance.duration;
-      }),
-    [project.motionInstances],
-  );
-
-  const renderMotionInstancesForTrack = useCallback(
-    async (
-      ctx: CanvasRenderingContext2D,
-      track: Track,
-      time: number,
-      canvasWidth: number,
-      canvasHeight: number,
-    ): Promise<boolean> => {
-      const instances = (project.motionInstances ?? []).filter(
-        (instance) =>
-          instance.trackId === track.id &&
-          time >= instance.startTime &&
-          time < instance.startTime + instance.duration,
-      );
-      if (instances.length === 0) return false;
-
-      const compositions = project.motionCompositions ?? [];
-      const assetResolver = { resolveImageAsset: resolveMotionImageAsset };
-      const renderer =
-        motionRendererRef.current ?? (motionRendererRef.current = new MotionRenderer());
-      let rendered = false;
-
-      for (const instance of instances) {
-        const composition = compositions.find(
-          (candidate) => candidate.id === instance.compositionId,
-        );
-        if (!composition) continue;
-
-        let bitmap: ImageBitmap | null = null;
-        try {
-          bitmap = await renderer.renderInstance(
-            composition,
-            instance,
-            time,
-            compositions,
-            assetResolver,
-            1,
-          );
-          const baseTransform = scaleTransformPositionForPreview(
-            instance.transform as ClipTransform,
-            previewRes.scale,
-          );
-          drawFrameWithTransform(
-            ctx,
-            bitmap,
-            {
-              ...baseTransform,
-              opacity: instance.opacity * (baseTransform.opacity ?? 1),
-            },
-            canvasWidth,
-            canvasHeight,
-          );
-          rendered = true;
-        } catch (error) {
-          console.warn(
-            `[Preview] Motion render failed for instance ${instance.id}:`,
-            error,
-          );
-        } finally {
-          bitmap?.close();
-        }
-      }
-
-      return rendered;
-    },
-    [
-      project.motionCompositions,
-      project.motionInstances,
-      previewRes.scale,
-      resolveMotionImageAsset,
-    ],
-  );
-
-  /**
-   * Render overlay clips (text and shapes) respecting proper z-ordering with video/image tracks.
-   * Track order determines layering: lower track index = rendered on top.
-   *
-   * @param mode - "below-video" renders only overlays that should appear below video tracks
-   * "above-video" renders only overlays that should appear above video tracks
-   * "all" renders all overlays (legacy behavior for when no video is present)
-   */
-  const renderOverlayClipsInTrackOrder = useCallback(
-    async (
-      ctx: CanvasRenderingContext2D,
-      tracks: Track[],
-      shapeClips: (ShapeClip | SVGClip | StickerClip)[],
-      textClips: TextClip[],
-      time: number,
-      canvasWidth: number,
-      canvasHeight: number,
-      mode: "below-video" | "above-video" | "all" = "all",
-      subjectFrame: ImageBitmap | null = null,
-    ) => {
-      const subjectStreamId = getBehindSubjectStreamId(
-        tracks,
-        time,
-        getMediaItem,
-      );
-      const videoImageTrackIndices = tracks
-        .map((t, idx) => ({ track: t, originalIndex: idx }))
-        .filter(
-          ({ track }) =>
-            !track.hidden &&
-            track.clips.some(
-              (clip) =>
-                time >= clip.startTime &&
-                time < clip.startTime + clip.duration &&
-                mediaClipHasVisual(clip),
-            ),
-        )
-        .map(({ originalIndex }) => originalIndex);
-
-      const lowestVideoIndex =
-        videoImageTrackIndices.length > 0
-          ? Math.min(...videoImageTrackIndices)
-          : Infinity;
-      const highestVideoIndex =
-        videoImageTrackIndices.length > 0
-          ? Math.max(...videoImageTrackIndices)
-          : -1;
-
-      const overlayTracksWithIndex = getVisibleTrackRenderOrder(tracks);
-
-      const tracksToRender = overlayTracksWithIndex.filter(
-        ({ originalIndex }) => {
-          if (mode === "below-video") {
-            return originalIndex > highestVideoIndex;
-          } else if (mode === "above-video") {
-            return originalIndex < lowestVideoIndex;
-          }
-          return true;
-        },
-      );
-
-      for (const { track } of tracksToRender) {
-        const trackShapeClips = shapeClips.filter(
-          (clip) => clip.trackId === track.id,
-        );
-        for (const shapeClip of trackShapeClips) {
-          await renderShapeClipWithEffects(
-            ctx,
-            shapeClip,
-            canvasWidth,
-            canvasHeight,
-            time,
-          );
-        }
-        await renderMotionInstancesForTrack(
-          ctx,
-          track,
-          time,
-          canvasWidth,
-          canvasHeight,
-        );
-        const trackTextClips = textClips.filter(
-          (clip) => clip.trackId === track.id,
-        );
-        for (const textClip of trackTextClips) {
-          await renderTextClipWithSubjectMask(
-            ctx,
-            textClip,
-            canvasWidth,
-            canvasHeight,
-            time,
-            subjectFrame,
-            isPlaying,
-            subjectStreamId,
-          );
-        }
-      }
-    },
-    [getMediaItem, isPlaying, mediaClipHasVisual, renderMotionInstancesForTrack],
-  );
-
-  /**
-   * Set up audio playback from the AUDIO TRACK at a given timeline position
-   * Uses RealtimeAudioGraph for real-time audio effects (reverb, delay, EQ, compressor)
-   *
-   * Audio effects can be on either:
-   * 1. The audio clip on the audio track (preferred)
-   * 2. A linked video clip on the video track (same mediaId, same startTime)
-   *
-   * @param timelinePosition - The current position in the timeline
-   */
-  const setupAudioFromAudioTrack = useCallback(
-    async (timelinePosition: number): Promise<void> => {
-      const tracks = timelineTracksRef.current;
-      const audioTracks = tracks.filter(
-        (track) => !track.hidden && trackHasAudioItems(project, track.id),
-      );
-
-      if (!audioGraphRef.current) {
-        audioGraphRef.current = getRealtimeAudioGraph();
-      }
-      const audioGraph = audioGraphRef.current;
-      audioGraph.setPreviewMuted(isMuted);
-
-      const speedEngine = getSpeedEngine();
-      const scheduledClips: AudioClipSchedule[] = [];
-
-      for (const audioTrack of audioTracks) {
-        audioGraph.createTrack({
-          trackId: audioTrack.id,
-          volume: 1,
-          pan: 0,
-          muted: audioTrack.muted || false,
-          solo: audioTrack.solo || false,
-          effects: [],
-        });
-
-        if (audioTrack.muted) {
-          continue;
-        }
-
-        for (const audioClip of audioTrack.clips) {
-          if (!mediaClipHasAudio(audioClip)) {
-            continue;
-          }
-          const clipEnd = audioClip.startTime + audioClip.duration;
-
-          if (
-            timelinePosition >= audioClip.startTime &&
-            timelinePosition < clipEnd
-          ) {
-            const mediaItem = getOriginalMediaItem(audioClip.mediaId);
-            if (!mediaItem?.blob) {
-              continue;
-            }
-
-            const audioCacheKey = getAudioBufferCacheKey(
-              audioClip.mediaId,
-              audioClip.audioTrackIndex,
-            );
-            let audioBuffer = audioBufferCacheRef.current.get(audioCacheKey);
-            if (!audioBuffer) {
-              if (noAudioBufferRef.current.has(audioCacheKey)) {
-                continue;
-              }
-              try {
-                const audioContext = audioGraph.getAudioContext();
-                const loaded = await loadAudioBuffer(
-                  audioContext,
-                  mediaItem.blob,
-                  audioClip.audioTrackIndex ?? 0,
-                );
-                if (!loaded) {
-                  noAudioBufferRef.current.add(audioCacheKey);
-                  continue;
-                }
-                audioBuffer = loaded;
-                audioBufferCacheRef.current.set(audioCacheKey, audioBuffer);
-              } catch (error) {
-                console.warn(
-                  `[Preview] Failed to decode audio for clip ${audioClip.id}:`,
-                  error,
-                );
-                continue;
-              }
-            }
-
-            const audioEffects = getResolvedClipAudioEffects(audioClip);
-
-            const enabledEffects = audioEffects.filter(
-              (e: Effect) => e.enabled,
-            );
-            const previewAudio = await getPreviewAudioBufferForEffects(
-              audioBuffer,
-              audioCacheKey,
-              enabledEffects,
-            );
-
-            audioGraph.updateTrackEffects(audioTrack.id, previewAudio.effects);
-
-            const clipLocalTime = timelinePosition - audioClip.startTime;
-            const isReverse = speedEngine.isReverse(audioClip.id);
-            const transitionFades = getTrackTransitionAudioFades(
-              audioTrack,
-              audioClip.id,
-            );
-
-            let mediaOffset = (audioClip.inPoint || 0) + clipLocalTime;
-            if (isReverse) {
-              mediaOffset = audioBuffer.duration - mediaOffset;
-              mediaOffset = Math.max(0, mediaOffset);
-            }
-
-            scheduledClips.push({
-              clipId: audioClip.id,
-              trackId: audioTrack.id,
-              audioBuffer: previewAudio.audioBuffer,
-              startTime: audioClip.startTime,
-              endTime: clipEnd,
-              mediaOffset,
-              volume: audioClip.volume ?? 1,
-              volumeAutomation: getResolvedClipVolumeAutomation(audioClip),
-              pan: 0,
-              effects: previewAudio.effects,
-              speed: audioClip.speed ?? 1,
-              fadeIn: Math.max(
-                audioClip.fade?.fadeIn ?? 0,
-                transitionFades.fadeIn,
-              ),
-              fadeOut: Math.max(
-                audioClip.fade?.fadeOut ?? 0,
-                transitionFades.fadeOut,
-              ),
-            });
-          }
-        }
-      }
-
-      if (scheduledClips.length > 0) {
-        await audioGraph.resume();
-        audioGraph.scheduleClips(scheduledClips);
-      }
-    },
-    [
-      getOriginalMediaItem,
-      getPreviewAudioBufferForEffects,
-      getResolvedClipAudioEffects,
-      getResolvedClipVolumeAutomation,
-      isMuted,
-      mediaClipHasAudio,
-      project,
-    ],
-  );
-
-  const preDecodeAllAudioBuffers = useCallback(async (): Promise<void> => {
-    const tracks = timelineTracksRef.current;
-    const audioTracks = tracks.filter((track) => !track.hidden);
-
-    if (!audioGraphRef.current) {
-      audioGraphRef.current = getRealtimeAudioGraph();
-    }
-    const audioGraph = audioGraphRef.current;
-    const audioContext = audioGraph.getAudioContext();
-
-    for (const track of audioTracks) {
-      for (const clip of track.clips) {
-        if (!mediaClipHasAudio(clip)) {
-          continue;
-        }
-        const cacheKey = getAudioBufferCacheKey(clip.mediaId, clip.audioTrackIndex);
-        let audioBuffer: AudioBuffer | null | undefined =
-          audioBufferCacheRef.current.get(cacheKey);
-
-        if (!audioBuffer) {
-          if (noAudioBufferRef.current.has(cacheKey)) {
-            continue;
-          }
-          const mediaItem = getOriginalMediaItem(clip.mediaId);
-          if (!mediaItem?.blob) {
-            continue;
-          }
-
-          try {
-            audioBuffer = await loadAudioBuffer(
-              audioContext,
-              mediaItem.blob,
-              clip.audioTrackIndex ?? 0,
-            );
-            if (audioBuffer) {
-              audioBufferCacheRef.current.set(cacheKey, audioBuffer);
-            } else {
-              noAudioBufferRef.current.add(cacheKey);
-            }
-          } catch {
-            audioBuffer = null;
-            noAudioBufferRef.current.add(cacheKey);
-          }
-        }
-
-        if (audioBuffer) {
-          const audioEffects = getResolvedClipAudioEffects(clip).filter(
-            (effect: Effect) => effect.enabled,
-          );
-          if (audioEffects.length > 0) {
-            try {
-              await getPreviewAudioBufferForEffects(audioBuffer, cacheKey, audioEffects);
-            } catch (error) {
-              console.warn(
-                `[Preview] Failed to pre-process audio effects for clip ${clip.id}:`,
-                error,
-              );
-            }
-          }
-        }
-      }
-    }
-  }, [
-    getOriginalMediaItem,
+  const {
+    getAudioEffectSignature,
     getPreviewAudioBufferForEffects,
     getResolvedClipAudioEffects,
+    getResolvedClipVolumeAutomation,
+    setupAudioFromAudioTrack,
+  } = usePreviewAudio({
+    refs,
+    project,
+    isMuted,
+    getOriginalMediaItem,
     mediaClipHasAudio,
-  ]);
-
-  // Pre-warm audio decode caches when the timeline settles after an edit (e.g.
-  // moving/adding a clip), so the realtime scheduler finds decoded buffers ready
-  // on the first play tick instead of silently dropping clips until a lazy decode
-  // lands (~0.5-1s "lag then smooth"). Debounced so it never runs mid-drag, and
-  // skipped during playback. preDecodeAllAudioBuffers is idempotent (cached and
-  // negatively-cached buffers are no-ops), so re-warming after each edit is cheap.
-  const audioWarmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const audioWarmupIdleRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (isPlaying) {
-      return;
-    }
-
-    if (audioWarmupTimerRef.current) {
-      clearTimeout(audioWarmupTimerRef.current);
-    }
-
-    audioWarmupTimerRef.current = setTimeout(() => {
-      audioWarmupTimerRef.current = null;
-      if (isInteractingRef.current) {
-        return;
-      }
-
-      const warm = () => {
-        void preDecodeAllAudioBuffers().catch(() => {});
-      };
-
-      const idle = (
-        window as Window & {
-          requestIdleCallback?: (
-            cb: () => void,
-            opts?: { timeout: number },
-          ) => number;
-        }
-      ).requestIdleCallback;
-
-      if (typeof idle === "function") {
-        audioWarmupIdleRef.current = idle(warm, { timeout: 1000 });
-      } else {
-        warm();
-      }
-    }, 250);
-
-    return () => {
-      if (audioWarmupTimerRef.current) {
-        clearTimeout(audioWarmupTimerRef.current);
-        audioWarmupTimerRef.current = null;
-      }
-    };
-  }, [timelineTracks, isPlaying, preDecodeAllAudioBuffers]);
-
-  const getAudioClipsForScheduler = useCallback(
-    (time: number): AudioClipSchedule[] => {
-      const tracks = timelineTracksRef.current;
-      const tracksWithAudio = tracks.filter(
-        (track) => !track.hidden && !track.muted,
-      );
-      const schedules: AudioClipSchedule[] = [];
-
-      for (const track of tracksWithAudio) {
-        for (const clip of track.clips) {
-          if (!mediaClipHasAudio(clip)) {
-            continue;
-          }
-          const clipEnd = clip.startTime + clip.duration;
-          if (clipEnd <= time || clip.startTime > time + 1) {
-            continue;
-          }
-
-          const audioBuffer = audioBufferCacheRef.current.get(
-            getAudioBufferCacheKey(clip.mediaId, clip.audioTrackIndex),
-          );
-          if (!audioBuffer) {
-            continue;
-          }
-
-          const audioEffects = getResolvedClipAudioEffects(clip).filter(
-            (e: Effect) => e.enabled,
-          );
-          const previewEffects = getPreviewAudioEffects(audioEffects);
-          const { profileAwareNoiseEffects, realtimeEffects } =
-            splitProfileAwareNoiseReductionEffects(previewEffects);
-          let scheduleAudioBuffer = audioBuffer;
-          let scheduleEffects = previewEffects;
-
-          if (profileAwareNoiseEffects.length > 0) {
-            const processedCacheKey = `${getAudioBufferCacheKey(
-              clip.mediaId,
-              clip.audioTrackIndex,
-            )}:profile-denoise:${getAudioEffectSignature(profileAwareNoiseEffects)}`;
-            const processedAudioBuffer =
-              processedAudioBufferCacheRef.current.get(processedCacheKey);
-
-            if (processedAudioBuffer) {
-              scheduleAudioBuffer = processedAudioBuffer;
-              scheduleEffects = realtimeEffects;
-            }
-          }
-          const transitionFades = getTrackTransitionAudioFades(track, clip.id);
-
-          schedules.push({
-            clipId: clip.id,
-            trackId: track.id,
-            audioBuffer: scheduleAudioBuffer,
-            startTime: clip.startTime,
-            endTime: clipEnd,
-            mediaOffset: clip.inPoint || 0,
-            volume: clip.volume ?? 1,
-            volumeAutomation: getResolvedClipVolumeAutomation(clip),
-            pan: 0,
-            effects: scheduleEffects,
-            speed: clip.speed ?? 1,
-            fadeIn: Math.max(
-              clip.fade?.fadeIn ?? 0,
-              transitionFades.fadeIn,
-            ),
-            fadeOut: Math.max(
-              clip.fade?.fadeOut ?? 0,
-              transitionFades.fadeOut,
-            ),
-          });
-        }
-      }
-
-      return schedules;
-    },
-    [
-      getAudioEffectSignature,
-      getResolvedClipAudioEffects,
-      getResolvedClipVolumeAutomation,
-      mediaClipHasAudio,
-    ],
-  );
-
+  });
+  const {
+    hasActiveMotionInstances,
+    renderMotionInstancesForTrack,
+    renderOverlayClipsInTrackOrder,
+  } = usePreviewMotion({
+    project,
+    previewScale: previewRes.scale,
+    refs,
+    getMediaItem,
+    mediaClipHasVisual,
+    isPlaying,
+  });
+  const {
+    getAudioClipsForScheduler,
+    preDecodeAllAudioBuffers,
+  } = usePreviewAudioScheduler({
+    refs,
+    timelineTracks,
+    isPlaying,
+    mediaClipHasAudio,
+    getOriginalMediaItem,
+    getAudioEffectSignature,
+    getResolvedClipAudioEffects,
+    getResolvedClipVolumeAutomation,
+    getPreviewAudioBufferForEffects,
+  });
   /**
    * Decode a single frame from a clip at a specific time using native video element
    * Native video elements provide reliable hardware-accelerated random-access seeking
    */
   const decodeClipFrame = useCallback(
-    async (
-      clip: {
-        id: string;
-        mediaId: string;
-        startTime: number;
-        inPoint?: number;
-      },
+    (
+      clip: { id: string; mediaId: string; startTime: number; inPoint?: number },
       time: number,
-    ): Promise<ImageBitmap | null> => {
-      const mediaItem = getMediaItem(clip.mediaId);
-      if (!mediaItem?.blob) return null;
-      const vidstab = getVidstabEngine();
-      const mediaBlob = (vidstab.hasStabilized(clip.id)
-        ? vidstab.getStabilizedBlob(clip.id)
-        : mediaItem.blob)!;
-
-      if (mediaItem.type === "image") {
-        try {
-          return await createImageBitmap(mediaItem.blob);
-        } catch {
-          return null;
-        }
-      }
-
-      const requestSeq = ++decodeRequestSeqRef.current;
-      const isStaleRequest = () => requestSeq !== decodeRequestSeqRef.current;
-
-      if (scrubVideoReleaseTimerRef.current) {
-        clearTimeout(scrubVideoReleaseTimerRef.current);
-        scrubVideoReleaseTimerRef.current = null;
-      }
-
-      if (decodeDebounceRef.current) {
-        clearTimeout(decodeDebounceRef.current);
-        decodeDebounceRef.current = null;
-      }
-      decodeDebounceResolveRef.current?.(null);
-      decodeDebounceResolveRef.current = null;
-
-      return new Promise<ImageBitmap | null>((resolve) => {
-        decodeDebounceResolveRef.current = resolve;
-        decodeDebounceRef.current = setTimeout(async () => {
-          decodeDebounceRef.current = null;
-          decodeDebounceResolveRef.current = null;
-
-          if (isStaleRequest()) {
-            resolve(null);
-            return;
-          }
-
-          try {
-            const clipLocalTime = time - clip.startTime;
-            const speedEngine = getSpeedEngine();
-            const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
-              clip.id,
-              clipLocalTime,
-            );
-            const isStabilized = vidstab.hasStabilized(clip.id);
-            const mediaTime = isStabilized ? adjustedLocalTime : (clip.inPoint || 0) + adjustedLocalTime;
-            const cacheKey = isStabilized ? `${clip.mediaId}:stabilized` : clip.mediaId;
-            let cached = videoElementCacheRef.current.get(cacheKey);
-
-            if (!cached) {
-              const url = URL.createObjectURL(mediaBlob);
-              const video = document.createElement("video");
-              video.src = url;
-              video.muted = true;
-              video.playsInline = true;
-              video.preload = "metadata";
-              video.crossOrigin = "anonymous";
-
-              await new Promise<void>((res, rej) => {
-                const timeoutId = setTimeout(
-                  () => rej(new Error("Video load timeout")),
-                  10000,
-                );
-                video.onloadedmetadata = () => {
-                  clearTimeout(timeoutId);
-                  res();
-                };
-                video.onerror = () => {
-                  clearTimeout(timeoutId);
-                  rej(new Error("Video load failed"));
-                };
-              });
-
-              if (isStaleRequest()) {
-                releaseVideoElement({ video, url });
-                resolve(null);
-                return;
-              }
-
-              cached = { video, url, lastUsed: Date.now() };
-              videoElementCacheRef.current.set(cacheKey, cached);
-
-              while (videoElementCacheRef.current.size > 2) {
-                evictOldestVideoElement();
-              }
-            }
-
-            cached.lastUsed = Date.now();
-            const { video } = cached;
-
-            const clampedTime = Math.max(
-              0,
-              Math.min(mediaTime, video.duration - 0.001),
-            );
-            const seekTime =
-              clampedTime <= 0 && video.duration > 0.002 ? 0.001 : clampedTime;
-            if (
-              Math.abs(video.currentTime - seekTime) > 0.01 ||
-              video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
-            ) {
-              video.currentTime = seekTime;
-              await new Promise<void>((res) => {
-                let settled = false;
-                let timeoutId: ReturnType<typeof setTimeout> | null = null;
-                const onSeeked = () => {
-                  if (settled) return;
-                  settled = true;
-                  if (timeoutId) clearTimeout(timeoutId);
-                  video.removeEventListener("seeked", onSeeked);
-                  res();
-                };
-                video.addEventListener("seeked", onSeeked);
-                timeoutId = setTimeout(() => {
-                  if (settled) return;
-                  settled = true;
-                  video.removeEventListener("seeked", onSeeked);
-                  res();
-                }, 250);
-              });
-            }
-
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
-            }
-
-            await new Promise<void>((res) => {
-              if (!("requestVideoFrameCallback" in video)) {
-                res();
-                return;
-              }
-
-              let settled = false;
-              let timeoutId: ReturnType<typeof setTimeout> | null = null;
-              const finish = () => {
-                if (settled) return;
-                settled = true;
-                if (timeoutId) clearTimeout(timeoutId);
-                res();
-              };
-
-              video.requestVideoFrameCallback(finish);
-              timeoutId = setTimeout(finish, 300);
-            });
-
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
-            }
-
-            await new Promise<void>((res) => {
-              if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-                res();
-                return;
-              }
-
-              let settled = false;
-              let timeoutId: ReturnType<typeof setTimeout> | null = null;
-              const finish = () => {
-                if (settled) return;
-                settled = true;
-                if (timeoutId) clearTimeout(timeoutId);
-                video.removeEventListener("loadeddata", finish);
-                video.removeEventListener("canplay", finish);
-                res();
-              };
-
-              video.addEventListener("loadeddata", finish);
-              video.addEventListener("canplay", finish);
-              timeoutId = setTimeout(finish, 250);
-            });
-
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
-            }
-
-            const frame = await captureNativeVideoFrame(video);
-            if (isStaleRequest()) {
-              frame.close();
-              resolve(null);
-              return;
-            }
-            scheduleScrubVideoRelease();
-            resolve(frame);
-          } catch {
-            if (!isStaleRequest()) failProxyPlayback(clip.mediaId, mediaBlob);
-            const cached = videoElementCacheRef.current.get(clip.mediaId);
-            if (cached) {
-              releaseVideoElement(cached);
-              videoElementCacheRef.current.delete(clip.mediaId);
-            }
-            scheduleScrubVideoRelease();
-            resolve(null);
-          }
-        }, 50);
-      });
-    },
-    [
-      evictOldestVideoElement,
-      failProxyPlayback,
-      getMediaItem,
-      releaseVideoElement,
-      scheduleScrubVideoRelease,
-    ],
+    ): Promise<ImageBitmap | null> =>
+      decodePreviewClipFrame(
+        { refs, getMediaItem, failProxyPlayback, evictOldestVideoElement, releaseVideoElement, scheduleScrubVideoRelease },
+        clip,
+        time,
+      ),
+    [evictOldestVideoElement, failProxyPlayback, getMediaItem, releaseVideoElement, scheduleScrubVideoRelease],
   );
 
-  // Fills the preview canvas behind the clip. A project "color" canvas fill
-  // paints the chosen color; otherwise the theme bar color (black/white). The
-  // "blur" backdrop is NOT painted here — it needs the actual decoded base
-  // frame, which is only available mid-render, so each render path draws it
-  // inline via drawBlurredBackdrop right after decoding the base clip.
   const fillPreviewBackground = useCallback(
     (
       ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-      _time: number,
+      time: number,
       width: number,
       height: number,
-    ): void => {
-      if (canvasFillModeRef.current === "color" && canvasFillColorRef.current) {
-        ctx.fillStyle = canvasFillColorRef.current;
-      } else {
-        ctx.fillStyle = previewBgRef.current;
-      }
-      ctx.fillRect(0, 0, width, height);
-    },
+    ): void => fillPreviewCanvasBackground(refs, ctx, time, width, height),
     [],
   );
+  const renderFrameDirectly = usePreviewDirectRender({
+    refs,
+    timelineTracks,
+    getMediaItem,
+    decodeClipFrame,
+    previewRes,
+    allTextClips,
+    allShapeClips,
+    allSubtitles,
+    renderOverlayClipsInTrackOrder,
+    renderMotionInstancesForTrack,
+    hasActiveMotionInstances,
+    clipMasksById,
+    drawClipFrame,
+    fillPreviewBackground,
+    isDark,
+    isPlaying,
+    project,
+    mediaClipHasVisual,
+  });
+  renderFrameDirectlyInitializer.current = renderFrameDirectly;
 
-  // Render a single frame using MediaBunny (for scrubbing/seeking)
-  const renderFrameDirectly = useCallback(
-    async (time: number): Promise<boolean> => {
-      const canvas = canvasRef.current;
-      if (!canvas) return false;
-
-      if (canvas.width === 0 || canvas.height === 0) {
-        canvas.width = previewRes.width;
-        canvas.height = previewRes.height;
-      }
-
-      const mainCtx = canvas.getContext("2d");
-      if (!mainCtx) return false;
-
-      // Compound clips are full nested timelines rather than media blobs.
-      // Route those frames through the canonical compositor so preview and
-      // export share identical nesting, timing, effects and transforms.
-      const hasActiveCompound = timelineTracks.some((track) =>
-        !track.hidden &&
-        track.clips.some(
-          (clip) =>
-            typeof clip.metadata?.compoundClipId === "string" &&
-            time >= clip.startTime &&
-            time < clip.startTime + clip.duration,
-        ),
-      );
-      if (hasActiveCompound) {
-        const frame = await getRenderBridge().renderFrame(time);
-        if (frame) {
-          mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-          mainCtx.drawImage(frame.image, 0, 0, canvas.width, canvas.height);
-          return true;
-        }
-      }
-
-      if (
-        !offscreenCanvasRef.current ||
-        offscreenCanvasRef.current.width !== canvas.width ||
-        offscreenCanvasRef.current.height !== canvas.height
-      ) {
-        offscreenCanvasRef.current = new OffscreenCanvas(
-          canvas.width,
-          canvas.height,
-        );
-        offscreenCtxRef.current = offscreenCanvasRef.current.getContext(
-          "2d",
-        ) as OffscreenCanvasRenderingContext2D;
-      }
-
-      const ctx =
-        offscreenCtxRef.current as unknown as CanvasRenderingContext2D;
-      if (!ctx) return false;
-
-      const videoTracks = timelineTracks.filter(
-        (track) =>
-          !track.hidden && track.clips.some((clip) => mediaClipHasVisual(clip)),
-      );
-
-      let hasRenderedFrame = false;
-      let shouldClearCanvas = true;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const activeShapeClips = getActiveShapeClips(allShapeClips, time);
-      const activeTextClips = getActiveTextClips(allTextClips, time);
-      const hasActiveClipMasks = videoTracks.some((track) =>
-        track.clips.some(
-          (clip) =>
-            clipMasksById.has(clip.id) &&
-            time >= clip.startTime &&
-            time < clip.startTime + clip.duration,
-        ),
-      );
-      if (hasActiveClipMasks) {
-        // A masked layer contains transparent pixels. Reusing the previous full
-        // frame underneath would make those pixels appear unmasked, so start
-        // from the actual composition background before drawing the layer.
-        fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-        shouldClearCanvas = false;
-      }
-
-      const transitionInfo = getTransitionAtTime(
-        time,
-        timelineTracks,
-        mediaClipHasVisual,
-      );
-
-      if (transitionInfo) {
-        try {
-          const clipAFrame = await decodeClipFrame(transitionInfo.clipA, time);
-          const clipBFrame = transitionInfo.clipB
-            ? await decodeClipFrame(transitionInfo.clipB, time)
-            : null;
-          const blankFrame = transitionInfo.clipB
-            ? null
-            : await createTransparentImageBitmap(canvas.width, canvas.height);
-          const closeOnce = (() => {
-            const closed = new Set<ImageBitmap>();
-            return (bitmap: ImageBitmap | null | undefined) => {
-              if (!bitmap || closed.has(bitmap)) return;
-              closed.add(bitmap);
-              bitmap.close();
-            };
-          })();
-
-          if (clipAFrame && (clipBFrame || blankFrame)) {
-            const processedA = await applyEffectsToFrame(
-              transitionInfo.clipA.id,
-              clipAFrame,
-            );
-            const processedB =
-              transitionInfo.clipB && clipBFrame
-                ? await applyEffectsToFrame(transitionInfo.clipB.id, clipBFrame)
-                : null;
-
-            const validA =
-              processedA.width > 0 && processedA.height > 0
-                ? processedA
-                : clipAFrame;
-            const validB =
-              processedB && processedB.width > 0 && processedB.height > 0
-                ? processedB
-                : clipBFrame;
-            const outgoingTransitionFrame =
-              transitionInfo.clipB || transitionInfo.edge !== "in"
-                ? validA
-                : blankFrame;
-            const incomingTransitionFrame = transitionInfo.clipB
-              ? validB
-              : transitionInfo.edge === "in"
-                ? validA
-                : blankFrame;
-
-            const blendedFrame =
-              outgoingTransitionFrame && incomingTransitionFrame
-                ? await renderTransitionFrame(
-                    transitionInfo,
-                    outgoingTransitionFrame,
-                    incomingTransitionFrame,
-                  )
-                : null;
-
-            if (
-              blendedFrame &&
-              blendedFrame.width > 0 &&
-              blendedFrame.height > 0
-            ) {
-              if (shouldClearCanvas) {
-                fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-                shouldClearCanvas = false;
-              }
-              await renderOverlayClipsInTrackOrder(
-                ctx,
-                timelineTracks,
-                activeShapeClips,
-                activeTextClips,
-                time,
-                canvas.width,
-                canvas.height,
-                "below-video",
-              );
-              drawFrameWithTransform(
-                ctx,
-                blendedFrame,
-                DEFAULT_TRANSFORM,
-                canvas.width,
-                canvas.height,
-              );
-              await renderOverlayClipsInTrackOrder(
-                ctx,
-                timelineTracks,
-                activeShapeClips,
-                activeTextClips,
-                time,
-                canvas.width,
-                canvas.height,
-                "above-video",
-                hasBehindSubjectText(activeTextClips) ? blendedFrame : null,
-              );
-              if (processedA !== clipAFrame) closeOnce(processedA);
-              if (processedB && processedB !== clipBFrame) closeOnce(processedB);
-              closeOnce(clipAFrame);
-              closeOnce(clipBFrame);
-              closeOnce(blankFrame);
-              if (
-                blendedFrame !== validA &&
-                blendedFrame !== validB &&
-                blendedFrame !== blankFrame
-              ) {
-                closeOnce(blendedFrame);
-              }
-              hasRenderedFrame = true;
-            }
-            if (processedA !== clipAFrame) closeOnce(processedA);
-            if (processedB && processedB !== clipBFrame) closeOnce(processedB);
-            closeOnce(clipAFrame);
-            closeOnce(clipBFrame);
-            closeOnce(blankFrame);
-            if (
-              blendedFrame &&
-              blendedFrame !== validA &&
-              blendedFrame !== validB &&
-              blendedFrame !== blankFrame
-            ) {
-              closeOnce(blendedFrame);
-            }
-          } else if (clipAFrame) {
-            const processed = await applyEffectsToFrame(
-              transitionInfo.clipA.id,
-              clipAFrame,
-            );
-            const validFrame =
-              processed.width > 0 && processed.height > 0
-                ? processed
-                : clipAFrame;
-            if (shouldClearCanvas) {
-              fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-              shouldClearCanvas = false;
-            }
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "below-video",
-            );
-            drawFrameWithTransform(
-              ctx,
-              validFrame,
-              DEFAULT_TRANSFORM,
-              canvas.width,
-              canvas.height,
-            );
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "above-video",
-              hasBehindSubjectText(activeTextClips) ? validFrame : null,
-            );
-            if (processed !== clipAFrame) {
-              closeOnce(processed);
-            }
-            closeOnce(clipAFrame);
-            hasRenderedFrame = true;
-          } else if (clipBFrame && transitionInfo.clipB) {
-            const processed = await applyEffectsToFrame(
-              transitionInfo.clipB.id,
-              clipBFrame,
-            );
-            const validFrame =
-              processed.width > 0 && processed.height > 0
-                ? processed
-                : clipBFrame;
-            if (shouldClearCanvas) {
-              fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-              shouldClearCanvas = false;
-            }
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "below-video",
-            );
-            drawFrameWithTransform(
-              ctx,
-              validFrame,
-              DEFAULT_TRANSFORM,
-              canvas.width,
-              canvas.height,
-            );
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "above-video",
-              hasBehindSubjectText(activeTextClips) ? validFrame : null,
-            );
-            if (processed !== clipBFrame) {
-              closeOnce(processed);
-            }
-            closeOnce(clipBFrame);
-            hasRenderedFrame = true;
-          }
-          closeOnce(blankFrame);
-        } catch (error) {
-          console.warn("[Preview] Transition render failed:", error);
-        }
-      }
-
-      if (!hasRenderedFrame) {
-        const hasVideoContent = videoTracks.some((track) =>
-          track.clips.some(
-            (clip) =>
-              mediaClipHasVisual(clip) &&
-              time >= clip.startTime &&
-              time < clip.startTime + clip.duration,
-          ),
-        );
-        const hasMotionContent = hasActiveMotionInstances(time);
-
-        if (
-          shouldClearCanvas &&
-          (hasVideoContent ||
-            hasMotionContent ||
-            activeShapeClips.length > 0 ||
-            activeTextClips.length > 0)
-        ) {
-          if (hasVideoContent) {
-            fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-          } else {
-            ctx.fillStyle = isDark ? "#0f0f11" : "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
-          shouldClearCanvas = false;
-        }
-
-        // Render ALL tracks in layer order using painter's algorithm
-        // Higher index = rendered first (appears behind), Lower index = rendered last (appears on top)
-        const allRenderableTracks = getVisibleTrackRenderOrder(timelineTracks);
-
-        let subjectFrame: ImageBitmap | null = null;
-        const shouldCompositeSubject = hasBehindSubjectText(activeTextClips);
-        let blurBackdropDrawn = false;
-
-        for (const { track } of allRenderableTracks) {
-          {
-            for (const clip of track.clips) {
-              if (!mediaClipHasVisual(clip)) continue;
-              const clipStart = clip.startTime;
-              const clipEnd = clip.startTime + clip.duration;
-
-              if (time >= clipStart && time < clipEnd) {
-                const frame = await decodeClipFrame(clip, time);
-
-                if (frame) {
-                  // The decoder returns native, un-letterboxed frames for both
-                  // images and videos. Paint the first visible layer cover-fit
-                  // behind the composition when the project uses blur fill.
-                  if (
-                    canvasFillModeRef.current === "blur" &&
-                    !blurBackdropDrawn
-                  ) {
-                    drawBlurredBackdrop(
-                      ctx,
-                      frame,
-                      frame.width,
-                      frame.height,
-                      canvas.width,
-                      canvas.height,
-                    );
-                    blurBackdropDrawn = true;
-                  }
-                  const clipLocalTime = time - clip.startTime;
-                  const speedEngine = getSpeedEngine();
-                  const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
-                    clip.id,
-                    clipLocalTime,
-                  );
-                  const sourceTime = Math.max(
-                    clip.inPoint,
-                    Math.min(clip.outPoint, clip.inPoint + adjustedLocalTime),
-                  );
-                  let animatedTransform = scaleTransformPositionForPreview(
-                    getAnimatedTransform(
-                      clip.transform as ClipTransform,
-                      clip.keyframes,
-                      clipLocalTime,
-                    ),
-                    previewRes.scale,
-                  );
-
-                  if (
-                    clip.emphasisAnimation &&
-                    clip.emphasisAnimation.type !== "none"
-                  ) {
-                    const emphasisState = applyEmphasisAnimation(
-                      clip.emphasisAnimation,
-                      clipLocalTime,
-                    );
-                    animatedTransform = {
-                      ...animatedTransform,
-                      opacity:
-                        animatedTransform.opacity * emphasisState.opacity,
-                      scale: {
-                        x:
-                          animatedTransform.scale.x *
-                          emphasisState.scale *
-                          emphasisState.scaleX,
-                        y:
-                          animatedTransform.scale.y *
-                          emphasisState.scale *
-                          emphasisState.scaleY,
-                      },
-                      position: {
-                        x:
-                          animatedTransform.position.x +
-                          emphasisState.offsetX * canvas.width,
-                        y:
-                          animatedTransform.position.y +
-                          emphasisState.offsetY * canvas.height,
-                      },
-                      rotation:
-                        animatedTransform.rotation + emphasisState.rotation,
-                    };
-                  }
-
-                  const stabilizedTransform = applyStabilizationTransform(
-                    clip,
-                    animatedTransform,
-                    sourceTime,
-                    canvas.width,
-                    canvas.height,
-                    frame.width,
-                    frame.height,
-                  );
-
-                  const nativeCssFilter = clipCssFilterOnly(clip.id);
-                  let processedFrame: ImageBitmap | null = null;
-                  try {
-                    if (nativeCssFilter) {
-                      await drawClipFrame(
-                        ctx,
-                        clip.id,
-                        frame,
-                        stabilizedTransform,
-                        canvas.width,
-                        canvas.height,
-                        time,
-                        nativeCssFilter,
-                      );
-                      hasRenderedFrame = true;
-                    } else {
-                      processedFrame = await applyEffectsToFrame(clip.id, frame);
-                      if (processedFrame.width > 0 && processedFrame.height > 0) {
-                        await drawClipFrame(
-                          ctx,
-                          clip.id,
-                          processedFrame,
-                          stabilizedTransform,
-                          canvas.width,
-                          canvas.height,
-                          time,
-                        );
-                        hasRenderedFrame = true;
-                      } else {
-                        await drawClipFrame(
-                          ctx,
-                          clip.id,
-                          frame,
-                          stabilizedTransform,
-                          canvas.width,
-                          canvas.height,
-                          time,
-                        );
-                        hasRenderedFrame = true;
-                      }
-                    }
-                  } catch {
-                    await drawClipFrame(
-                      ctx,
-                      clip.id,
-                      frame,
-                      stabilizedTransform,
-                      canvas.width,
-                      canvas.height,
-                      time,
-                    );
-                    hasRenderedFrame = true;
-                  } finally {
-                    if (processedFrame && processedFrame !== frame) {
-                      processedFrame.close();
-                    }
-                  }
-
-                  if (shouldCompositeSubject) {
-                    subjectFrame?.close();
-                    subjectFrame = await captureSubjectFrame(
-                      ctx,
-                      canvas.width,
-                      canvas.height,
-                    );
-                  }
-                  frame.close();
-                }
-              }
-            }
-          }
-          const trackShapeClips = activeShapeClips.filter(
-            (clip) => clip.trackId === track.id,
-          );
-          for (const shapeClip of trackShapeClips) {
-            await renderShapeClipWithEffects(
-              ctx,
-              shapeClip,
-              canvas.width,
-              canvas.height,
-              time,
-            );
-            hasRenderedFrame = true;
-          }
-          if (
-            await renderMotionInstancesForTrack(
-              ctx,
-              track,
-              time,
-              canvas.width,
-              canvas.height,
-            )
-          ) {
-            hasRenderedFrame = true;
-          }
-          const trackTextClips = activeTextClips.filter(
-            (clip) => clip.trackId === track.id,
-          );
-          for (const textClip of trackTextClips) {
-            await renderTextClipWithSubjectMask(
-              ctx,
-              textClip,
-              canvas.width,
-              canvas.height,
-              time,
-              subjectFrame,
-              isPlaying,
-              getBehindSubjectStreamId(timelineTracks, time, getMediaItem),
-            );
-
-            hasRenderedFrame = true;
-          }
-        }
-        subjectFrame?.close();
-      }
-
-      const activeSubtitles = getActiveSubtitles(allSubtitles, time);
-      if (activeSubtitles.length > 0 && ctx) {
-        for (const subtitle of activeSubtitles) {
-          renderSubtitleToCanvas(
-            ctx,
-            subtitle,
-            canvas.width,
-            canvas.height,
-            time,
-          );
-        }
-      }
-
-      if (ctx && offscreenCanvasRef.current) {
-        const adjusted = await applyPreviewAdjustmentLayers(
-          offscreenCanvasRef.current,
-          ctx,
-          project.adjustmentLayers ?? [],
-          time,
-        );
-        hasRenderedFrame = hasRenderedFrame || adjusted;
-      }
-
-      if (hasRenderedFrame && offscreenCanvasRef.current) {
-        mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-        mainCtx.drawImage(offscreenCanvasRef.current, 0, 0);
-        try {
-          lastGoodFrameRef.current?.close();
-          lastGoodFrameRef.current = await createImageBitmap(
-            offscreenCanvasRef.current,
-          );
-        } catch {
-          // Snapshot failures are recoverable; keep the already-rendered frame.
-        }
-        return true;
-      }
-
-      return hasRenderedFrame;
-    },
-    [
-      timelineTracks,
-      getMediaItem,
-      decodeClipFrame,
-      previewRes.width,
-      previewRes.height,
-      previewRes.scale,
-      allTextClips,
-      allShapeClips,
-      allSubtitles,
-      renderOverlayClipsInTrackOrder,
-      renderMotionInstancesForTrack,
-      hasActiveMotionInstances,
-      clipMasksById,
-      drawClipFrame,
-      fillPreviewBackground,
-      isDark,
-      isPlaying,
-      project.adjustmentLayers,
-      mediaClipHasVisual,
-    ],
-  );
-
-  const renderFrameDirectlyRef = useRef(renderFrameDirectly);
   useEffect(() => {
     if (fontRevision > 0) void renderFrameDirectlyRef.current(useTimelineStore.getState().playheadPosition);
   }, [fontRevision]);
-  useEffect(() => {
-    renderFrameDirectlyRef.current = renderFrameDirectly;
-  }, [renderFrameDirectly]);
-
-  const isPlayingRef = useRef(isPlaying);
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
-
-  const playheadPositionRef = useRef(playheadPosition);
-  useEffect(() => {
-    playheadPositionRef.current = playheadPosition;
-  }, [playheadPosition]);
+  usePreviewRefMirror(refs.renderFrameDirectlyRef, renderFrameDirectly);
+  usePreviewRefMirror(refs.isPlayingRef, isPlaying);
+  usePreviewRefMirror(refs.playheadPositionRef, playheadPosition);
 
   useEffect(() => {
     setImageLoadCallback(() => {
@@ -3263,1221 +879,44 @@ export const Preview: React.FC = () => {
     return () => setImageLoadCallback(null);
   }, []);
 
-  const renderFallbackFrame = useCallback(
-    async (time: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      if (canvas.width === 0 || canvas.height === 0) {
-        canvas.width = previewRes.width;
-        canvas.height = previewRes.height;
-      }
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const emptyBg = isDark ? "#0f0f11" : "#ffffff";
-      const emptyText = isDark ? "#52525b" : "#a1a1aa";
-      const textPrimary = isDark ? "#ffffff" : "#18181b";
-      const textSecondary = isDark ? "#a1a1aa" : "#71717a";
-
-      const activeShapeClips = getActiveShapeClips(allShapeClips, time);
-      const activeTextClips = getActiveTextClips(allTextClips, time);
-
-      const videoTracks = timelineTracks.filter(
-        (track) =>
-          !track.hidden && track.clips.some((clip) => mediaClipHasVisual(clip)),
-      );
-
-      const hasVideoContent = videoTracks.some((track) =>
-        track.clips.some(
-          (clip) =>
-            mediaClipHasVisual(clip) &&
-            time >= clip.startTime &&
-            time < clip.startTime + clip.duration,
-        ),
-      );
-
-      ctx.fillStyle = hasVideoContent
-        ? isDark
-          ? "#18181b"
-          : "#f4f4f5"
-        : emptyBg;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      let hasRenderedContent = false;
-
-      const allRenderableTracks = getVisibleTrackRenderOrder(timelineTracks);
-
-      for (const { track } of allRenderableTracks) {
-        {
-          for (const clip of track.clips) {
-            if (!mediaClipHasVisual(clip)) continue;
-            const clipStart = clip.startTime;
-            const clipEnd = clip.startTime + clip.duration;
-
-            if (time >= clipStart && time < clipEnd) {
-              const mediaItem = getMediaItem(clip.mediaId);
-              if (mediaItem) {
-                hasRenderedContent = true;
-                ctx.fillStyle = textPrimary;
-                ctx.font = "bold 24px Inter, sans-serif";
-                ctx.textAlign = "center";
-                ctx.fillText(
-                  mediaItem.name,
-                  canvas.width / 2,
-                  canvas.height / 2,
-                );
-                ctx.font = "16px Inter, sans-serif";
-                ctx.fillStyle = textSecondary;
-                ctx.fillText(
-                  `${formatTime(time)} / ${formatTime(clip.duration)}`,
-                  canvas.width / 2,
-                  canvas.height / 2 + 30,
-                );
-              } else if ((clip as ClipWithPlaceholder).isPlaceholder) {
-                hasRenderedContent = true;
-                ctx.fillStyle = textSecondary;
-                ctx.font = "bold 20px Inter, sans-serif";
-                ctx.textAlign = "center";
-                ctx.fillText(
-                  "Drop media here",
-                  canvas.width / 2,
-                  canvas.height / 2,
-                );
-                ctx.font = "14px Inter, sans-serif";
-                ctx.fillStyle = emptyText;
-                ctx.fillText(
-                  "Replace this placeholder with your content",
-                  canvas.width / 2,
-                  canvas.height / 2 + 28,
-                );
-              }
-            }
-          }
-        }
-        const trackShapeClips = activeShapeClips.filter(
-          (clip) => clip.trackId === track.id,
-        );
-        for (const shapeClip of trackShapeClips) {
-          await renderShapeClipWithEffects(
-            ctx,
-            shapeClip,
-            canvas.width,
-            canvas.height,
-            time,
-          );
-          hasRenderedContent = true;
-        }
-        const trackTextClips = activeTextClips.filter(
-          (clip) => clip.trackId === track.id,
-        );
-        for (const textClip of trackTextClips) {
-          await renderTextClipWithSubjectMask(
-            ctx,
-            textClip,
-            canvas.width,
-            canvas.height,
-            time,
-            null,
-            isPlaying,
-            getBehindSubjectStreamId(timelineTracks, time, getMediaItem),
-          );
-          hasRenderedContent = true;
-        }
-      }
-
-      const activeSubtitles = getActiveSubtitles(allSubtitles, time);
-      for (const subtitle of activeSubtitles) {
-        renderSubtitleToCanvas(
-          ctx,
-          subtitle,
-          canvas.width,
-          canvas.height,
-          time,
-        );
-      }
-
-      const audioTracks = timelineTracks.filter((track) => !track.hidden);
-      const hasActiveAudioClip = audioTracks.some((track) =>
-        track.clips.some(
-          (clip) =>
-            mediaClipHasAudio(clip) &&
-            time >= clip.startTime && time < clip.startTime + clip.duration,
-        ),
-      );
-
-      if (
-        !hasRenderedContent &&
-        activeTextClips.length === 0 &&
-        activeShapeClips.length === 0 &&
-        !hasActiveMotionInstances(time) &&
-        !hasActiveAudioClip
-      ) {
-        ctx.fillStyle = emptyText;
-        ctx.font = "24px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(
-          "Import media to get started",
-          canvas.width / 2,
-          canvas.height / 2,
-        );
-      }
-    },
-    [
+  const { renderFallbackFrame, canUseNativeVideoPlayback } =
+    usePreviewFallbackRender({
+      refs,
       timelineTracks,
-      getMediaItem,
-      previewRes.width,
-      previewRes.height,
+      previewRes,
       allTextClips,
       allShapeClips,
       allSubtitles,
-      hasActiveMotionInstances,
-      isDark,
-      isPlaying,
-      mediaClipHasAudio,
-      mediaClipHasVisual,
-    ],
-  );
-
-  // Check if we can use native video element playback (much faster, hardware-accelerated)
-  const canUseNativeVideoPlayback = useCallback(
-    (
-      startPosition: number,
-    ): {
-      canUse: boolean;
-      clips: Array<{
-        clip: (typeof timelineTracks)[0]["clips"][0];
-        mediaItem: NonNullable<ReturnType<typeof getMediaItem>>;
-      }>;
-      imageClips?: Array<{
-        clip: (typeof timelineTracks)[0]["clips"][0];
-        trackIndex: number;
-      }>;
-    } => {
-      const tracks = timelineTracks;
-      if (
-        tracks.some(
-          (track) =>
-            !track.hidden &&
-            track.clips.some(
-              (clip) =>
-                clip.startTime + clip.duration > startPosition &&
-                typeof clip.metadata?.compoundClipId === "string",
-            ),
-        )
-      ) {
-        return { canUse: false, clips: [] };
-      }
-      const videoTracks = tracks.filter((track) => !track.hidden);
-
-      const allVideoClips: Array<{
-        clip: (typeof tracks)[0]["clips"][0];
-        mediaItem: NonNullable<ReturnType<typeof getMediaItem>>;
-      }> = [];
-      const speedEngine = getSpeedEngine();
-
-      for (const track of videoTracks) {
-        for (const clip of track.clips) {
-          if (clip.startTime + clip.duration > startPosition) {
-            if (clipMasksById.has(clip.id)) {
-              return { canUse: false, clips: [] };
-            }
-            const mediaItem = getMediaItem(clip.mediaId);
-            if (mediaItem?.blob && mediaItem.type === "video") {
-              const clipSpeed = speedEngine.getClipSpeed(clip.id);
-              const isReverse = speedEngine.isReverse(clip.id);
-              if (
-                clipSpeed !== 1 ||
-                isReverse ||
-                (clipNeedsFrameProcessing(clip.id) &&
-                  clipCssFilterOnly(clip.id) === null)
-              ) {
-                return { canUse: false, clips: [] };
-              }
-              allVideoClips.push({ clip, mediaItem });
-            }
-          }
-        }
-      }
-
-      const hasActiveAudioEffects = tracks.some(
-        (track) =>
-          !track.hidden &&
-          track.clips.some((clip) => {
-            if (clip.startTime + clip.duration <= startPosition) {
-              return false;
-            }
-            if (!mediaClipHasAudio(clip)) return false;
-
-            return getPreviewAudioEffects(
-              getResolvedClipAudioEffects(clip),
-            ).some(
-              (effect) => effect.enabled,
-            );
-          }),
-      );
-
-      if (hasActiveAudioEffects) {
-        return { canUse: false, clips: [] };
-      }
-
-      if (allVideoClips.length === 0) return { canUse: false, clips: [] };
-
-      allVideoClips.sort((a, b) => a.clip.startTime - b.clip.startTime);
-
-      // Check for overlapping clips (multi-layer) - can't use native playback for compositing
-      for (let i = 0; i < allVideoClips.length - 1; i++) {
-        const current = allVideoClips[i];
-        const next = allVideoClips[i + 1];
-        const currentEnd = current.clip.startTime + current.clip.duration;
-        if (next.clip.startTime < currentEnd) {
-          return { canUse: false, clips: [] };
-        }
-      }
-
-      // Note: Text/graphics overlays are now supported in native video playback
-      // They are rendered using CPU canvas2D after the video frame
-
-      // Collect image clips for background compositing (don't disable native playback)
-      const imageTracks = tracks.filter((track) => !track.hidden);
-      const imageClips: Array<{
-        clip: (typeof tracks)[0]["clips"][0];
-        trackIndex: number;
-      }> = [];
-      imageTracks.forEach((track) => {
-        const trackIndex = tracks.indexOf(track);
-        for (const clip of track.clips) {
-          if (getMediaItem(clip.mediaId)?.type === "image") {
-            imageClips.push({ clip, trackIndex });
-          }
-        }
-      });
-
-      if (imageClips.some(({ clip }) => clipMasksById.has(clip.id))) {
-        return { canUse: false, clips: [] };
-      }
-
-      return { canUse: true, clips: allVideoClips, imageClips };
-    },
-    [
-      timelineTracks,
+      clipMasksById,
       getMediaItem,
       getResolvedClipAudioEffects,
-      clipMasksById,
-      mediaClipHasAudio,
-    ],
-  );
-
-  // Start native video playback using hardware-accelerated video elements (handles multiple clips)
-  const startNativeVideoPlayback = useCallback(
-    async (
-      clips: Array<{
-        clip: (typeof timelineTracks)[0]["clips"][0];
-        mediaItem: NonNullable<ReturnType<typeof getMediaItem>>;
-      }>,
-      imageClips: Array<{
-        clip: (typeof timelineTracks)[0]["clips"][0];
-        trackIndex: number;
-      }>,
-      startPosition: number,
-      onEnd: () => void,
-      shouldContinue: () => boolean,
-    ): Promise<() => void> => {
-      let isActive = true;
-      const isCurrentPlayback = () => isActive && shouldContinue();
-      const canvas = canvasRef.current;
-      if (!canvas || clips.length === 0) {
-        onEnd();
-        return () => {};
-      }
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        onEnd();
-        return () => {};
-      }
-
-      nativePlaybackActiveRef.current = true;
-
-      const imageBitmapCache = nativeImageBitmapCacheRef.current;
-      for (const { clip } of imageClips) {
-        if (imageBitmapCache.has(clip.id)) {
-          continue;
-        }
-        const mediaItem = getMediaItem(clip.mediaId);
-        if (mediaItem?.type === "image" && mediaItem.blob) {
-          try {
-            const bitmap = await createImageBitmap(mediaItem.blob);
-            if (!isCurrentPlayback()) { bitmap.close(); return () => {}; }
-            imageBitmapCache.set(clip.id, bitmap);
-          } catch (error) {
-            console.warn(`Failed to cache image bitmap for ${clip.id}:`, error);
-          }
-        }
-      }
-
-      if (!isCurrentPlayback()) return () => {};
-      preDecodeAllAudioBuffers().catch((error) => {
-        console.warn("[Preview] Audio warmup failed:", error);
-      });
-
-      const videoCache = nativeVideoCacheRef.current;
-      const loadingVideos = new Map<string, Promise<void>>();
-
-      const loadVideoForClip = (
-        clip: (typeof timelineTracks)[0]["clips"][0],
-        mediaItem: NonNullable<ReturnType<typeof getMediaItem>>,
-      ): Promise<void> => {
-        if (!isCurrentPlayback()) return Promise.resolve();
-        const vidstabCheck = getVidstabEngine();
-        const clipStabilized = vidstabCheck.hasStabilized(clip.id);
-        const videoCacheId = clipStabilized ? `stabilized:${clip.id}` : clip.mediaId;
-
-        const existingLoad = loadingVideos.get(videoCacheId);
-        if (existingLoad) {
-          return existingLoad;
-        }
-
-        const cachedVideo = videoCache.get(videoCacheId)?.video;
-        if (cachedVideo) {
-          if (cachedVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-            return Promise.resolve();
-          }
-        }
-
-        if (!mediaItem.blob) {
-          return Promise.resolve();
-        }
-
-        const vidstabEng = getVidstabEngine();
-        const isStabilized = vidstabEng.hasStabilized(clip.id);
-        const playBlob = (isStabilized
-          ? vidstabEng.getStabilizedBlob(clip.id)
-          : mediaItem.blob)!;
-        const cacheId = isStabilized ? `stabilized:${clip.id}` : clip.mediaId;
-        const url = URL.createObjectURL(playBlob);
-        const video = document.createElement("video");
-        video.src = url;
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = "auto";
-
-        videoCache.set(cacheId, { video, url });
-
-        const loadPromise = new Promise<void>((resolve) => {
-          let settled = false;
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            video.onloadedmetadata = null;
-            video.onloadeddata = null;
-            video.oncanplay = null;
-            video.onerror = null;
-            loadingVideos.delete(cacheId);
-            resolve();
-          };
-          video.onloadeddata = finish;
-          video.oncanplay = finish;
-          video.onloadedmetadata = () => {
-            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-              finish();
-            }
-          };
-          video.onerror = () => {
-            if (isCurrentPlayback() && !isStabilized) failProxyPlayback(clip.mediaId, playBlob);
-            finish();
-          };
-          video.load();
-          setTimeout(finish, 1200);
-        });
-
-        loadingVideos.set(cacheId, loadPromise);
-        return loadPromise;
-      };
-
-      const activeStartClip = clips.find(
-        ({ clip }) =>
-          startPosition >= clip.startTime &&
-          startPosition < clip.startTime + clip.duration,
-      );
-      if (activeStartClip) {
-        await loadVideoForClip(activeStartClip.clip, activeStartClip.mediaItem);
-      }
-      if (!isCurrentPlayback()) return () => {};
-
-      for (const entry of clips) {
-        if (entry !== activeStartClip) {
-          loadVideoForClip(entry.clip, entry.mediaItem).catch(() => {});
-        }
-      }
-
-      const masterClock = getMasterClock();
-      masterClock.setDuration(actualEndTime);
-      masterClock.seek(startPosition);
-
-      if (!audioGraphRef.current) {
-        audioGraphRef.current = getRealtimeAudioGraph();
-      }
-      const audioGraph = audioGraphRef.current;
-      audioGraph.setPreviewMuted(isMuted);
-
-      const tracksWithAudio = timelineTracks.filter(
-        (track) => !track.hidden && trackHasAudioItems(project, track.id),
-      );
-      for (const audioTrack of tracksWithAudio) {
-        audioGraph.createTrack({
-          trackId: audioTrack.id,
-          volume: 1,
-          pan: 0,
-          muted: audioTrack.muted || false,
-          solo: audioTrack.solo || false,
-          effects: [],
-        });
-      }
-
-      await audioGraph.resume();
-      if (!isCurrentPlayback()) return () => {};
-      audioGraph.seekTo(startPosition);
-      let rafId: number | null = null;
-      let currentClipId: string | null = null;
-
-      const findClipAtTime = (time: number) => {
-        for (const { clip, mediaItem } of clips) {
-          if (time >= clip.startTime && time < clip.startTime + clip.duration) {
-            return { clip, mediaItem };
-          }
-        }
-        return null;
-      };
-
-      const findNextNativeClip = (clipId: string) => {
-        const sorted = [...clips].sort((a, b) => a.clip.startTime - b.clip.startTime);
-        const index = sorted.findIndex(({ clip }) => clip.id === clipId);
-        return index >= 0 ? sorted[index + 1] ?? null : null;
-      };
-
-      const findNativeClipById = (clipId: string) =>
-        clips.find(({ clip }) => clip.id === clipId) ?? null;
-
-      const waitForDrawableVideoFrame = async (
-        video: HTMLVideoElement,
-        timeoutMs = 300,
-      ): Promise<void> => {
-        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          return;
-        }
-
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          let timeoutId: ReturnType<typeof setTimeout> | null = null;
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            if (timeoutId) clearTimeout(timeoutId);
-            video.removeEventListener("loadeddata", finish);
-            video.removeEventListener("canplay", finish);
-            resolve();
-          };
-          video.addEventListener("loadeddata", finish);
-          video.addEventListener("canplay", finish);
-          timeoutId = setTimeout(finish, timeoutMs);
-        });
-      };
-
-      const syncVideoToClipTime = async (
-        video: HTMLVideoElement,
-        clip: (typeof clips)[0]["clip"],
-        time: number,
-      ): Promise<void> => {
-        const speedEngine = getSpeedEngine();
-        const localTime = Math.max(
-          0,
-          Math.min(clip.duration, time - clip.startTime),
-        );
-        const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
-          clip.id,
-          localTime,
-        );
-        const sourceTime = Math.max(
-          clip.inPoint,
-          Math.min(clip.outPoint, clip.inPoint + adjustedLocalTime),
-        );
-        const vidstabPlay = getVidstabEngine();
-        const videoTime = vidstabPlay.hasStabilized(clip.id)
-          ? sourceTime - clip.inPoint
-          : sourceTime;
-
-        let needsDrawableWait = video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA;
-        if (Math.abs(video.currentTime - videoTime) > 0.1) {
-          needsDrawableWait = true;
-          await new Promise<void>((resolve) => {
-            let settled = false;
-            let timeoutId: ReturnType<typeof setTimeout> | null = null;
-            const finish = () => {
-              if (settled) return;
-              settled = true;
-              if (timeoutId) clearTimeout(timeoutId);
-              video.removeEventListener("seeked", finish);
-              resolve();
-            };
-            video.addEventListener("seeked", finish);
-            timeoutId = setTimeout(finish, 250);
-            video.currentTime = videoTime;
-          });
-        } else if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-          needsDrawableWait = true;
-          video.currentTime = videoTime;
-        }
-
-        if (needsDrawableWait) {
-          await waitForDrawableVideoFrame(video);
-        }
-      };
-
-      const playVideoElement = async (video: HTMLVideoElement): Promise<void> => {
-        video.playbackRate = rateRef.current;
-        if (!video.paused) {
-          return;
-        }
-        try {
-          await video.play();
-        } catch {
-          // The canvas renderer can still draw the current frame if autoplay is blocked.
-        }
-      };
-
-      const drawFrame = async () => {
-        if (!isActive || !nativePlaybackActiveRef.current) return;
-
-        const currentPlayhead = masterClock.currentTime;
-
-        if (currentPlayhead >= actualEndTime) {
-          cleanup();
-          setPlayheadPosition(0);
-          startPositionRef.current = 0;
-          onEnd();
-          return;
-        }
-
-        if (!masterClock.isPlaying) {
-          cleanup();
-          if (!isScrubbingRef.current) {
-            onEnd();
-          }
-          return;
-        }
-
-        // Publish the clock before any frame decoding/compositing awaits. Audio
-        // is scheduled from this same clock, so delaying this update until the
-        // end of a heavy render makes sound appear to start ahead of the playhead.
-        const nowPlayhead = performance.now();
-        if (nowPlayhead - lastPlayheadUpdateRef.current >= editingFrameDuration) {
-          lastPlayheadUpdateRef.current = nowPlayhead;
-          setPlayheadPosition(currentPlayhead);
-        }
-
-        const transitionInfo = getTransitionAtTime(
-          currentPlayhead,
-          timelineTracksRef.current,
-          mediaClipHasVisual,
-        );
-        if (transitionInfo) {
-          const clipARecord = findNativeClipById(transitionInfo.clipA.id);
-          const clipBRecord = transitionInfo.clipB
-            ? findNativeClipById(transitionInfo.clipB.id)
-            : null;
-
-          if (clipARecord && (!transitionInfo.clipB || clipBRecord)) {
-            const records = clipBRecord
-              ? [clipARecord, clipBRecord]
-              : [clipARecord];
-            await Promise.all(
-              records.map((record) =>
-                loadVideoForClip(record.clip, record.mediaItem),
-              ),
-            );
-            if (!isActive || !nativePlaybackActiveRef.current) return;
-
-            const clipACacheId = getVidstabEngine().hasStabilized(
-              clipARecord.clip.id,
-            )
-              ? `stabilized:${clipARecord.clip.id}`
-              : clipARecord.clip.mediaId;
-            const clipBCacheId = clipBRecord && getVidstabEngine().hasStabilized(
-              clipBRecord.clip.id,
-            )
-              ? `stabilized:${clipBRecord.clip.id}`
-              : clipBRecord?.clip.mediaId;
-            const clipAVideo = videoCache.get(clipACacheId)?.video;
-            const clipBVideo = clipBCacheId
-              ? videoCache.get(clipBCacheId)?.video
-              : null;
-
-            if (clipAVideo && (!transitionInfo.clipB || clipBVideo)) {
-              const sameElement =
-                Boolean(clipBVideo) && clipAVideo === clipBVideo;
-              const cutTime = clipBRecord?.clip.startTime ?? clipARecord.clip.startTime;
-              const outgoingHeld =
-                Boolean(clipBVideo) && !sameElement && currentPlayhead >= cutTime;
-              const incomingHeld =
-                Boolean(clipBVideo) && !sameElement && currentPlayhead < cutTime;
-
-              if (outgoingHeld) clipAVideo.pause();
-              if (incomingHeld && clipBVideo) clipBVideo.pause();
-
-              await Promise.all([
-                syncVideoToClipTime(
-                  clipAVideo,
-                  clipARecord.clip,
-                  currentPlayhead,
-                ),
-                clipBVideo && clipBRecord
-                  ? syncVideoToClipTime(
-                      clipBVideo,
-                      clipBRecord.clip,
-                      currentPlayhead,
-                    )
-                  : Promise.resolve(),
-              ]);
-              if (!isActive || !nativePlaybackActiveRef.current) return;
-              if (!outgoingHeld) await playVideoElement(clipAVideo);
-              if (!incomingHeld && clipBVideo) {
-                await playVideoElement(clipBVideo);
-              }
-
-              const blank = transitionInfo.clipB
-                ? null
-                : createTransparentCanvasSource(canvas.width, canvas.height);
-              const outgoingSource =
-                transitionInfo.clipB || transitionInfo.edge !== "in"
-                  ? clipAVideo
-                  : blank;
-              const incomingSource = transitionInfo.clipB
-                ? clipBVideo
-                : transitionInfo.edge === "in"
-                  ? clipAVideo
-                  : blank;
-
-              const blended =
-                outgoingSource && incomingSource
-                  ? await renderTransitionCanvas(
-                      transitionInfo,
-                      outgoingSource,
-                      incomingSource,
-                    )
-                  : null;
-              if (!isActive || !nativePlaybackActiveRef.current) return;
-              if (blended) {
-                fillPreviewBackground(
-                  ctx,
-                  playheadPositionRef.current,
-                  canvas.width,
-                  canvas.height,
-                );
-                ctx.drawImage(blended, 0, 0, canvas.width, canvas.height);
-              }
-
-              const activeShapeClipsTr = getActiveShapeClips(
-                allShapeClipsRef.current,
-                currentPlayhead,
-              );
-              const activeTextClipsTr = getActiveTextClips(
-                allTextClipsRef.current,
-                currentPlayhead,
-              );
-              if (
-                activeShapeClipsTr.length > 0 ||
-                activeTextClipsTr.length > 0
-              ) {
-                const transitionSubjectFrame = hasBehindSubjectText(
-                  activeTextClipsTr,
-                )
-                  ? await captureSubjectFrame(ctx, canvas.width, canvas.height)
-                  : null;
-                try {
-                  await renderOverlayClipsInTrackOrder(
-                    ctx,
-                    timelineTracksRef.current,
-                    activeShapeClipsTr,
-                    activeTextClipsTr,
-                    currentPlayhead,
-                    canvas.width,
-                    canvas.height,
-                    "all",
-                    transitionSubjectFrame,
-                  );
-                } finally {
-                  transitionSubjectFrame?.close();
-                }
-              }
-
-              const activeSubtitlesTr = getActiveSubtitles(
-                allSubtitles,
-                currentPlayhead,
-              );
-              for (const subtitle of activeSubtitlesTr) {
-                renderSubtitleToCanvas(
-                  ctx,
-                  subtitle,
-                  canvas.width,
-                  canvas.height,
-                  currentPlayhead,
-                );
-              }
-
-              const nowTransition = performance.now();
-              if (
-                nowTransition - lastPlayheadUpdateRef.current >=
-                editingFrameDuration
-              ) {
-                lastPlayheadUpdateRef.current = nowTransition;
-                setPlayheadPosition(currentPlayhead);
-              }
-              rafId = requestAnimationFrame(() => {
-                drawFrame();
-              });
-              return;
-            }
-          }
-        }
-
-        const activeClip = findClipAtTime(currentPlayhead);
-
-        if (!activeClip) {
-          fillPreviewBackground(
-            ctx,
-            playheadPositionRef.current,
-            canvas.width,
-            canvas.height,
-          );
-
-          const sortedImageClipsNoVideo = [...imageClips].sort(
-            (a, b) => b.trackIndex - a.trackIndex,
-          );
-          for (const { clip: imgClip } of sortedImageClipsNoVideo) {
-            if (
-              currentPlayhead >= imgClip.startTime &&
-              currentPlayhead < imgClip.startTime + imgClip.duration
-            ) {
-              const bitmap = imageBitmapCache.get(imgClip.id);
-              if (bitmap) {
-                const latestImgClip = (() => {
-                  for (const track of timelineTracksRef.current) {
-                    const found = track.clips.find((c) => c.id === imgClip.id);
-                    if (found) return found;
-                  }
-                  return imgClip;
-                })();
-                const imgClipLocalTime = currentPlayhead - imgClip.startTime;
-                const imgTransform = scaleTransformPositionForPreview(
-                  getAnimatedTransform(
-                    (latestImgClip.transform as ClipTransform) ||
-                      DEFAULT_TRANSFORM,
-                    latestImgClip.keyframes,
-                    imgClipLocalTime,
-                  ),
-                  previewRes.scale,
-                );
-                drawFrameWithTransform(
-                  ctx,
-                  bitmap,
-                  imgTransform,
-                  canvas.width,
-                  canvas.height,
-                );
-              }
-            }
-          }
-
-          const activeShapeClipsNoVideo = getActiveShapeClips(
-            allShapeClipsRef.current,
-            currentPlayhead,
-          );
-          const activeTextClipsNoVideo = getActiveTextClips(
-            allTextClipsRef.current,
-            currentPlayhead,
-          );
-
-          if (
-            activeShapeClipsNoVideo.length > 0 ||
-            activeTextClipsNoVideo.length > 0 ||
-            hasActiveMotionInstances(currentPlayhead)
-          ) {
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracksRef.current,
-              activeShapeClipsNoVideo,
-              activeTextClipsNoVideo,
-              currentPlayhead,
-              canvas.width,
-              canvas.height,
-              "all",
-            );
-          }
-
-          const activeSubtitlesNoVideo = getActiveSubtitles(
-            allSubtitles,
-            currentPlayhead,
-          );
-          for (const subtitle of activeSubtitlesNoVideo) {
-            renderSubtitleToCanvas(
-              ctx,
-              subtitle,
-              canvas.width,
-              canvas.height,
-              currentPlayhead,
-            );
-          }
-
-          const nowNoClip = performance.now();
-          if (nowNoClip - lastPlayheadUpdateRef.current >= editingFrameDuration) {
-            lastPlayheadUpdateRef.current = nowNoClip;
-            setPlayheadPosition(currentPlayhead);
-          }
-          rafId = requestAnimationFrame(() => { drawFrame(); });
-          return;
-        }
-
-        const { clip, mediaItem } = activeClip;
-        const vidstabPlay = getVidstabEngine();
-        const clipIsStabilized = vidstabPlay.hasStabilized(clip.id);
-        const playbackCacheId = clipIsStabilized ? `stabilized:${clip.id}` : clip.mediaId;
-        const cached = videoCache.get(playbackCacheId);
-
-        if (!cached) {
-          await loadVideoForClip(clip, mediaItem);
-          if (!isActive || !nativePlaybackActiveRef.current) return;
-          const nowNoCached = performance.now();
-          if (nowNoCached - lastPlayheadUpdateRef.current >= editingFrameDuration) {
-            lastPlayheadUpdateRef.current = nowNoCached;
-            setPlayheadPosition(currentPlayhead);
-          }
-          rafId = requestAnimationFrame(() => { drawFrame(); });
-          return;
-        }
-
-        const { video } = cached;
-
-        if (currentClipId !== clip.id) {
-          currentClipId = clip.id;
-        }
-
-        const latestClip = (() => {
-          for (const track of timelineTracksRef.current) {
-            const found = track.clips.find((c) => c.id === clip.id);
-            if (found) return found;
-          }
-          return clip;
-        })();
-
-        const clipLocalTime = currentPlayhead - latestClip.startTime;
-        const speedEngine = getSpeedEngine();
-        const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
-          latestClip.id,
-          clipLocalTime,
-        );
-        const sourceTime = Math.max(
-          latestClip.inPoint,
-          Math.min(latestClip.outPoint, latestClip.inPoint + adjustedLocalTime),
-        );
-        await syncVideoToClipTime(video, latestClip, currentPlayhead);
-        if (!isActive || !nativePlaybackActiveRef.current) return;
-        await playVideoElement(video);
-
-        const timeUntilClipEnd =
-          latestClip.startTime + latestClip.duration - currentPlayhead;
-        if (timeUntilClipEnd <= 1.0) {
-          const nextClip = findNextNativeClip(latestClip.id);
-          if (nextClip) {
-            loadVideoForClip(nextClip.clip, nextClip.mediaItem).catch(() => {});
-          }
-        }
-
-        let transform = scaleTransformPositionForPreview(
-          getAnimatedTransform(
-            (latestClip.transform as ClipTransform) || DEFAULT_TRANSFORM,
-            latestClip.keyframes,
-            clipLocalTime,
-          ),
-          previewRes.scale,
-        );
-
-        if (latestClip.emphasisAnimation && latestClip.emphasisAnimation.type !== "none") {
-          const emphasisState = applyEmphasisAnimation(
-            latestClip.emphasisAnimation,
-            clipLocalTime,
-          );
-          transform = {
-            ...transform,
-            opacity: transform.opacity * emphasisState.opacity,
-            scale: {
-              x: transform.scale.x * emphasisState.scale * emphasisState.scaleX,
-              y: transform.scale.y * emphasisState.scale * emphasisState.scaleY,
-            },
-            position: {
-              x: transform.position.x + emphasisState.offsetX * canvas.width,
-              y: transform.position.y + emphasisState.offsetY * canvas.height,
-            },
-            rotation: transform.rotation + emphasisState.rotation,
-          };
-        }
-
-        fillPreviewBackground(
-          ctx,
-          playheadPositionRef.current,
-          canvas.width,
-          canvas.height,
-        );
-
-        if (
-          canvasFillModeRef.current === "blur" &&
-          video.videoWidth > 0 &&
-          video.videoHeight > 0
-        ) {
-          drawBlurredBackdrop(
-            ctx,
-            video,
-            video.videoWidth,
-            video.videoHeight,
-            canvas.width,
-            canvas.height,
-          );
-        }
-
-        // Sort by track index descending (higher index = background = render first)
-        const sortedImageClips = [...imageClips].sort(
-          (a, b) => b.trackIndex - a.trackIndex,
-        );
-        for (const { clip: imgClip } of sortedImageClips) {
-          if (
-            currentPlayhead >= imgClip.startTime &&
-            currentPlayhead < imgClip.startTime + imgClip.duration
-          ) {
-            const bitmap = imageBitmapCache.get(imgClip.id);
-            if (bitmap) {
-              const latestImgClip = (() => {
-                for (const track of timelineTracksRef.current) {
-                  const found = track.clips.find((c) => c.id === imgClip.id);
-                  if (found) return found;
-                }
-                return imgClip;
-              })();
-              const imgClipLocalTime = currentPlayhead - imgClip.startTime;
-              const imgTransform = scaleTransformPositionForPreview(
-                getAnimatedTransform(
-                  (latestImgClip.transform as ClipTransform) ||
-                    DEFAULT_TRANSFORM,
-                  latestImgClip.keyframes,
-                  imgClipLocalTime,
-                ),
-                previewRes.scale,
-              );
-              drawFrameWithTransform(
-                ctx,
-                bitmap,
-                imgTransform,
-                canvas.width,
-                canvas.height,
-              );
-            }
-          }
-        }
-
-        const allShapeClipsData = allShapeClipsRef.current;
-        const activeShapeClips = getActiveShapeClips(
-          allShapeClipsData,
-          currentPlayhead,
-        );
-        const activeTextClips = getActiveTextClips(
-          allTextClipsRef.current,
-          currentPlayhead,
-        );
-
-        const bgEngine = getBackgroundRemovalEngine();
-        const hasBgRemoval = bgEngine?.isInitialized() && bgEngine.getSettings(clip.id).enabled;
-
-        let videoFrame: HTMLVideoElement | ImageBitmap = video;
-        if (hasBgRemoval) {
-          try {
-            const rawBitmap = await createImageBitmap(video);
-            const processed = await applyEffectsToFrame(clip.id, rawBitmap);
-            if (!isActive || !nativePlaybackActiveRef.current) {
-              if (processed !== rawBitmap) {
-                processed.close();
-              }
-              rawBitmap.close();
-              return;
-            }
-            if (processed !== rawBitmap) {
-              rawBitmap.close();
-            }
-            videoFrame = processed;
-          } catch {
-            videoFrame = video;
-          }
-        }
-
-        let finalTransform = transform;
-        const vidstabEng = getVidstabEngine();
-        if (
-          latestClip.stabilization?.enabled &&
-          latestClip.stabilization.analyzed &&
-          !vidstabEng.hasStabilized(latestClip.id)
-        ) {
-          finalTransform = applyStabilizationTransform(
-            latestClip,
-            transform,
-            sourceTime,
-            canvas.width,
-            canvas.height,
-            video.videoWidth,
-            video.videoHeight,
-          );
-        }
-
-        const nativeCssFilter =
-          videoFrame === video ? clipCssFilterOnly(clip.id) : null;
-        drawFrameWithTransform(
-          ctx,
-          videoFrame,
-          finalTransform,
-          canvas.width,
-          canvas.height,
-          nativeCssFilter ?? undefined,
-        );
-        if (videoFrame !== video && videoFrame instanceof ImageBitmap) {
-          videoFrame.close();
-        }
-        const subjectFrame = hasBehindSubjectText(activeTextClips)
-          ? await captureSubjectFrame(ctx, canvas.width, canvas.height)
-          : null;
-
-        // Use CPU canvas2D for all overlays - more reliable than GPU compositing
-        // Render all text/graphics overlays (they're above the video since backgrounds are separate)
-        if (
-          activeShapeClips.length > 0 ||
-          activeTextClips.length > 0 ||
-          hasActiveMotionInstances(currentPlayhead)
-        ) {
-          await renderOverlayClipsInTrackOrder(
-            ctx,
-            timelineTracksRef.current,
-            activeShapeClips,
-            activeTextClips,
-            currentPlayhead,
-            canvas.width,
-            canvas.height,
-            "all",
-            subjectFrame,
-          );
-        }
-        subjectFrame?.close();
-
-        const activeSubtitles = getActiveSubtitles(
-          allSubtitles,
-          currentPlayhead,
-        );
-        for (const subtitle of activeSubtitles) {
-          renderSubtitleToCanvas(
-            ctx,
-            subtitle,
-            canvas.width,
-            canvas.height,
-            currentPlayhead,
-          );
-        }
-
-        try {
-          lastGoodFrameRef.current?.close();
-          lastGoodFrameRef.current = await createImageBitmap(canvas);
-        } catch {
-          // Snapshot failures are recoverable; keep the already-rendered frame.
-        }
-
-        rafId = requestAnimationFrame(() => {
-          drawFrame();
-        });
-      };
-
-      const cleanup = (preserveCaches = false) => {
-        isActive = false;
-        nativePlaybackActiveRef.current = false;
-        if (rafId) cancelAnimationFrame(rafId);
-
-        if (preserveCaches) {
-          for (const [, entry] of videoCache) {
-            entry.video.pause();
-          }
-        } else {
-          for (const [, entry] of videoCache) {
-            releaseVideoElement(entry);
-          }
-          videoCache.clear();
-        }
-
-        if (!preserveCaches) {
-          for (const [, bitmap] of imageBitmapCache) {
-            bitmap.close();
-          }
-          imageBitmapCache.clear();
-        }
-
-        videoElementRef.current = null;
-        currentVideoMediaIdRef.current = null;
-        if (preserveCaches) {
-          masterClock.pause();
-        } else {
-          masterClock.stop();
-        }
-        audioGraph.stopScheduler();
-      };
-
-      if (activeStartClip) {
-        const startupCacheId = getVidstabEngine().hasStabilized(
-          activeStartClip.clip.id,
-        )
-          ? `stabilized:${activeStartClip.clip.id}`
-          : activeStartClip.clip.mediaId;
-        const startupVideo = videoCache.get(startupCacheId)?.video;
-        if (startupVideo) {
-          await syncVideoToClipTime(startupVideo, activeStartClip.clip, startPosition);
-          if (!isActive || !nativePlaybackActiveRef.current) {
-            cleanup(true);
-            return () => {};
-          }
-          await playVideoElement(startupVideo);
-        }
-      }
-
-      if (!isCurrentPlayback()) return () => {};
-      await masterClock.play();
-      if (!isCurrentPlayback()) return () => {};
-      audioGraph.startScheduler(getAudioClipsForScheduler);
-      rafId = requestAnimationFrame(() => { drawFrame(); });
-
-      return cleanup;
-    },
-    [
-      actualEndTime,
-      editingFrameDuration,
-      allSubtitles,
-      getMediaItem,
-      failProxyPlayback,
-      getAudioClipsForScheduler,
-      isMuted,
-      preDecodeAllAudioBuffers,
-      releaseVideoElement,
       hasActiveMotionInstances,
-      renderOverlayClipsInTrackOrder,
-      fillPreviewBackground,
-      setPlayheadPosition,
-      timelineTracks,
-      project,
+      mediaClipHasAudio,
       mediaClipHasVisual,
-      previewRes.scale,
-    ],
-  );
+      isDark,
+      isPlaying,
+    });
+  // Start native video playback using hardware-accelerated video elements (handles multiple clips)
+  const startNativeVideoPlayback = usePreviewNativePlayback({
+    refs,
+    timelineTracks,
+    project,
+    previewRes,
+    actualEndTime,
+    editingFrameDuration,
+    allSubtitles,
+    getMediaItem,
+    failProxyPlayback,
+    getAudioClipsForScheduler,
+    preDecodeAllAudioBuffers,
+    isMuted,
+    releaseVideoElement,
+    hasActiveMotionInstances,
+    renderOverlayClipsInTrackOrder,
+    mediaClipHasVisual,
+    fillPreviewBackground,
+    setPlayheadPosition,
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -4519,33 +958,11 @@ export const Preview: React.FC = () => {
     const playbackStartPosition = startPositionRef.current;
 
     const findAllClipsAtTime = (time: number) => {
-      const tracks = timelineTracksRef.current;
-      const results: Array<{
-        clip: (typeof tracks)[0]["clips"][0];
-        track: (typeof tracks)[0];
-        trackIndex: number;
-      }> = [];
-
-      tracks.forEach((track, originalIndex) => {
-        if (!track.hidden) {
-          for (const clip of track.clips) {
-            if (
-              mediaClipHasVisual(clip) &&
-              time >= clip.startTime &&
-              time < clip.startTime + clip.duration
-            ) {
-              results.push({ clip, track, trackIndex: originalIndex });
-            }
-          }
-        }
-      });
-
-      return results.sort((a, b) => a.trackIndex - b.trackIndex);
+      return selectAllClipsAtTime(timelineTracksRef.current, time, mediaClipHasVisual);
     };
 
     const findClipAtTime = (time: number) => {
-      const results = findAllClipsAtTime(time);
-      return results.length > 0 ? results[0] : null;
+      return selectClipAtTime(timelineTracksRef.current, time, mediaClipHasVisual);
     };
 
     const _startPlaybackForClip = async (
@@ -4921,86 +1338,16 @@ export const Preview: React.FC = () => {
       }
     };
 
-    const initClipResources = async (
+    const initClipResourcesForPlayback = (
       clip: (typeof timelineTracksRef.current)[0]["clips"][0],
       trackIndex: number,
-    ) => {
-      const mediaItem = getMediaItem(clip.mediaId);
-      if (!mediaItem?.blob) {
-        return null;
-      }
-
-      // Images don't need MediaBunny resources - they're rendered directly via createImageBitmap
-      if (mediaItem.type === "image") {
-        return null;
-      }
-
-      try {
-        const mediabunny = await import("mediabunny");
-        const { Input, ALL_FORMATS, BlobSource, CanvasSink } = mediabunny;
-
-        const input = new Input({
-          source: new BlobSource(mediaItem.blob),
-          formats: ALL_FORMATS,
-        });
-
-        const videoTrack = await input.getPrimaryVideoTrack();
-        if (!videoTrack || !isActive) {
-          input[Symbol.dispose]?.();
-          return null;
-        }
-
-        const canDecode = await videoTrack.canDecode();
-        if (!canDecode || !isActive) {
-          input[Symbol.dispose]?.();
-          if (isActive) failProxyPlayback(clip.mediaId, mediaItem.blob);
-          return null;
-        }
-
-        const sink = new CanvasSink(videoTrack, {
-          poolSize: 3,
-        });
-
-        return {
-          input,
-          sink,
-          mediaId: clip.mediaId,
-          clipId: clip.id,
-          trackIndex,
-        };
-      } catch (error) {
-        if (isActive) failProxyPlayback(clip.mediaId, mediaItem.blob);
-        console.error(
-          `[Preview] Failed to init resources for clip ${clip.id}:`,
-          error,
-        );
-        return null;
-      }
-    };
-
-    const preCacheAllImageBitmaps = async () => {
-      const tracks = timelineTracksRef.current;
-      const visualTracks = tracks.filter((track) => !track.hidden);
-
-      for (const track of visualTracks) {
-        for (const clip of track.clips) {
-          if (imageBitmapCacheRef.current.has(clip.id)) continue;
-
-          const mediaItem = getMediaItem(clip.mediaId);
-          if (mediaItem?.type === "image" && mediaItem.blob) {
-            try {
-              const bitmap = await createImageBitmap(mediaItem.blob);
-              imageBitmapCacheRef.current.set(clip.id, bitmap);
-            } catch (error) {
-              console.warn(
-                `[Preview] Failed to pre-cache image clip ${clip.id}:`,
-                error,
-              );
-            }
-          }
-        }
-      }
-    };
+    ) =>
+      initClipResources(clip, trackIndex, () => isActive, {
+        getMediaItem,
+        failProxyPlayback,
+      });
+    const cachePlaybackImages = () =>
+      preCacheAllImageBitmaps(refs, timelineTracksRef.current, getMediaItem);
 
     const startMultiTrackPlayback = async () => {
       const initialClips = findAllClipsAtTime(playbackStartPosition);
@@ -5037,13 +1384,13 @@ export const Preview: React.FC = () => {
         return;
       }
 
-      preCacheAllImageBitmaps().catch((error) => {
+      cachePlaybackImages().catch((error) => {
         console.warn("[Preview] Image warmup failed:", error);
       });
 
       for (const { clip, trackIndex } of initialClips) {
         if (!playbackResourcesRef.current.has(clip.id)) {
-          const resources = await initClipResources(clip, trackIndex);
+          const resources = await initClipResourcesForPlayback(clip, trackIndex);
           if (resources) {
             playbackResourcesRef.current.set(clip.id, resources);
           }
@@ -5127,8 +1474,10 @@ export const Preview: React.FC = () => {
       audioGraph.startScheduler(getAudioClipsForScheduler);
 
       const frameDuration = editingFrameDuration;
-      let lastFrameTimestamp = performance.now();
-      let isProcessingFrame = false;
+      const multiTrackState: MultiTrackPlaybackState = {
+        lastFrameTimestamp: performance.now(),
+        isProcessingFrame: false,
+      };
 
       const processMultiTrackFrame = async () => {
         if (!isActive) {
@@ -5137,16 +1486,16 @@ export const Preview: React.FC = () => {
           return;
         }
 
-        if (isProcessingFrame) {
+        if (multiTrackState.isProcessingFrame) {
           return;
         }
-        isProcessingFrame = true;
+        multiTrackState.isProcessingFrame = true;
 
         const currentPlayhead = masterClock.currentTime;
 
         try {
           if (currentPlayhead >= actualEndTime) {
-            isProcessingFrame = false;
+            multiTrackState.isProcessingFrame = false;
             cleanupPlaybackResources();
             cleanupAudioResources();
             masterClock.stop();
@@ -5157,7 +1506,7 @@ export const Preview: React.FC = () => {
           }
 
           if (!masterClock.isPlaying) {
-            isProcessingFrame = false;
+            multiTrackState.isProcessingFrame = false;
             cleanupPlaybackResources();
             cleanupAudioResources();
             if (!isScrubbingRef.current) {
@@ -5210,7 +1559,7 @@ export const Preview: React.FC = () => {
               // Skipping to later content could jump beyond the loop's out point.
               fillPreviewBackground(mainCtx, currentPlayhead, canvas.width, canvas.height);
               masterClock.reportVideoTime(currentPlayhead);
-              isProcessingFrame = false;
+              multiTrackState.isProcessingFrame = false;
               animationRef.current = requestAnimationFrame(processMultiTrackFrame);
               return;
             }
@@ -5233,13 +1582,13 @@ export const Preview: React.FC = () => {
             if (nextTime !== null) {
               masterClock.seek(nextTime);
               audioGraph.seekTo(nextTime);
-              isProcessingFrame = false;
+              multiTrackState.isProcessingFrame = false;
               animationRef.current = requestAnimationFrame(
                 processMultiTrackFrame,
               );
               return;
             } else {
-              isProcessingFrame = false;
+              multiTrackState.isProcessingFrame = false;
               cleanupPlaybackResources();
               cleanupAudioResources();
               if (!isScrubbingRef.current) {
@@ -5259,10 +1608,10 @@ export const Preview: React.FC = () => {
             await renderFrameDirectlyRef.current(currentPlayhead);
             masterClock.reportVideoTime(currentPlayhead);
             const now = performance.now();
-            const elapsed = now - lastFrameTimestamp;
+            const elapsed = now - multiTrackState.lastFrameTimestamp;
             const delay = Math.max(0, frameDuration / rateRef.current - elapsed);
-            lastFrameTimestamp = now;
-            isProcessingFrame = false;
+            multiTrackState.lastFrameTimestamp = now;
+            multiTrackState.isProcessingFrame = false;
             if (isActive) {
               if (delay > 0) {
                 setTimeout(() => {
@@ -5277,7 +1626,7 @@ export const Preview: React.FC = () => {
 
           for (const { clip, trackIndex } of activeClips) {
             if (!playbackResourcesRef.current.has(clip.id)) {
-              const resources = await initClipResources(clip, trackIndex);
+              const resources = await initClipResourcesForPlayback(clip, trackIndex);
               if (resources) {
                 playbackResourcesRef.current.set(clip.id, resources);
               }
@@ -5324,7 +1673,7 @@ export const Preview: React.FC = () => {
               const lookups = bLookup ? [aLookup, bLookup] : [aLookup];
               for (const lookup of lookups) {
                 if (!playbackResourcesRef.current.has(lookup.clip.id)) {
-                  const resources = await initClipResources(
+                  const resources = await initClipResourcesForPlayback(
                     lookup.clip,
                     lookup.trackIndex,
                   );
@@ -5471,11 +1820,11 @@ export const Preview: React.FC = () => {
                     lastPlayheadUpdateRef.current = nowTr;
                     setPlayheadPosition(currentPlayhead);
                   }
-                  const elapsedTr = nowTr - lastFrameTimestamp;
+                  const elapsedTr = nowTr - multiTrackState.lastFrameTimestamp;
                   const targetTimeTr = frameDuration / rateRef.current;
                   const delayTr = Math.max(0, targetTimeTr - elapsedTr);
-                  lastFrameTimestamp = nowTr;
-                  isProcessingFrame = false;
+                  multiTrackState.lastFrameTimestamp = nowTr;
+                  multiTrackState.isProcessingFrame = false;
                   if (isActive) {
                     if (delayTr > 0) {
                       setTimeout(() => {
@@ -5911,13 +2260,13 @@ export const Preview: React.FC = () => {
 
           masterClock.reportVideoTime(currentPlayhead);
           const now = performance.now();
-          const elapsed = now - lastFrameTimestamp;
+          const elapsed = now - multiTrackState.lastFrameTimestamp;
           const targetTime = frameDuration / rateRef.current;
 
           const delay = Math.max(0, targetTime - elapsed);
-          lastFrameTimestamp = now;
+          multiTrackState.lastFrameTimestamp = now;
 
-          isProcessingFrame = false;
+          multiTrackState.isProcessingFrame = false;
 
           if (isActive) {
             if (delay > 0) {
@@ -5935,7 +2284,7 @@ export const Preview: React.FC = () => {
             }
           }
         } catch (error) {
-          isProcessingFrame = false;
+          multiTrackState.isProcessingFrame = false;
           console.error("[Preview] Multi-track frame error:", error);
           cleanupPlaybackResources();
           pause();
@@ -5946,21 +2295,11 @@ export const Preview: React.FC = () => {
     };
 
     const findNextClipStartTime = (afterTime: number): number | null => {
-      const tracks = timelineTracksRef.current;
-      const videoTracks = tracks.filter((track) => !track.hidden);
-      let nextStart: number | null = null;
-
-      for (const track of videoTracks) {
-        for (const clip of track.clips) {
-          if (mediaClipHasVisual(clip) && clip.startTime > afterTime) {
-            if (nextStart === null || clip.startTime < nextStart) {
-              nextStart = clip.startTime;
-            }
-          }
-        }
-      }
-
-      return nextStart;
+      return selectNextClipStartTime(
+        timelineTracksRef.current,
+        afterTime,
+        mediaClipHasVisual,
+      );
     };
 
     const findNextTextClipStartTime = (afterTime: number): number | null => {
@@ -6110,13 +2449,6 @@ export const Preview: React.FC = () => {
     drawClipFrame,
     fillPreviewBackground,
   ]);
-
-  const lastProjectForRenderRef = useRef(project);
-  const lastProxyRevisionForRenderRef = useRef(proxySourceRevision);
-  const lastPlayheadForRenderRef = useRef<number>(playheadPosition);
-  const modifiedRenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const renderInFlightRef = useRef<boolean>(false);
-  const pendingRenderTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isPlaying) return;
