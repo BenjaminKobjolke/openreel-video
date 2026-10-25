@@ -1,11 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   drawFrameWithTransform,
+  getActiveShapeClips,
+  getActiveTextClips,
   getAnimatedTransform,
   renderTextClipToCanvas,
 } from "./canvas-renderers";
 import { DEFAULT_TRANSFORM, type ClipTransform } from "./types";
 import { titleEngine, type Keyframe, type TextClip } from "@openreel/core";
+
+describe("active preview clips", () => {
+  it("keeps graphic clips active only within their timeline interval", () => {
+    const clips = [
+      { id: "before", startTime: 0, duration: 2 },
+      { id: "active", startTime: 2, duration: 3 },
+      { id: "after", startTime: 6, duration: 1 },
+    ] as Parameters<typeof getActiveShapeClips>[0];
+
+    expect(getActiveShapeClips(clips, 2).map((clip) => clip.id)).toEqual([
+      "active",
+    ]);
+    expect(getActiveShapeClips(clips, 5)).toEqual([]);
+  });
+
+  it("keeps text clips active only within their timeline interval", () => {
+    const clips = [
+      { id: "before", startTime: 0, duration: 2 },
+      { id: "active", startTime: 2, duration: 3 },
+      { id: "after", startTime: 6, duration: 1 },
+    ] as TextClip[];
+
+    expect(getActiveTextClips(clips, 2).map((clip) => clip.id)).toEqual([
+      "active",
+    ]);
+    expect(getActiveTextClips(clips, 5)).toEqual([]);
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
