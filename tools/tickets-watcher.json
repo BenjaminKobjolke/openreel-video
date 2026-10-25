@@ -34,5 +34,6 @@
       "code_quality": "green"
     }
   },
-  "analysis_code_quality_timeout_seconds": 370
+  "analysis_code_quality_timeout_seconds": 370,
+  "analysis_test_timeout_seconds": 590
 }
