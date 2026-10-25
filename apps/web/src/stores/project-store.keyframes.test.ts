@@ -36,7 +36,7 @@ const makeClip = (keyframes: Clip["keyframes"]): Clip => ({
   keyframes,
 });
 
-const loadClip = (clip: Clip): void => {
+const loadClip = (clip: Clip, keyframeRecording?: boolean): void => {
   const currentProject = useProjectStore.getState().project;
   const track: Project["timeline"]["tracks"][number] = {
     id: "track-1",
@@ -48,6 +48,7 @@ const loadClip = (clip: Clip): void => {
     hidden: false,
     muted: false,
     solo: false,
+    ...(keyframeRecording === undefined ? {} : { keyframeRecording }),
   };
   useProjectStore.setState({
     project: {
@@ -67,7 +68,7 @@ describe("ProjectStore clip transform keyframes", () => {
   it("writes a clip-local keyframe without changing the static transform", async () => {
     loadClip(makeClip([
       { id: "y-start", time: 0, property: "position.y", value: 0, easing: "linear" },
-    ]));
+    ]), true);
 
     const result = await useProjectStore
       .getState()
@@ -98,7 +99,7 @@ describe("ProjectStore clip transform keyframes", () => {
   it("updates keyed and unkeyed axes independently", async () => {
     loadClip(makeClip([
       { id: "y-start", time: 0, property: "position.y", value: 0, easing: "linear" },
-    ]));
+    ]), true);
 
     const result = await useProjectStore
       .getState()
@@ -127,5 +128,25 @@ describe("ProjectStore clip transform keyframes", () => {
     const clip = useProjectStore.getState().project.timeline.tracks[0]?.clips[0];
     expect(clip?.transform).toMatchObject({ rotation: 45, position: { y: 0 } });
     expect(clip?.keyframes).toEqual(keyframes);
+  });
+
+  it("shifts existing animation when recording is off by default", async () => {
+    const keyframes = [
+      { id: "x-start", time: 0, property: "position.x", value: 0, easing: "linear" },
+      { id: "x-end", time: 20, property: "position.x", value: 40, easing: "linear" },
+    ] satisfies Clip["keyframes"];
+    loadClip(makeClip(keyframes));
+
+    const result = await useProjectStore
+      .getState()
+      .updateClipTransform("clip-1", { position: { x: 25 } });
+
+    expect(result.success).toBe(true);
+    const clip = useProjectStore.getState().project.timeline.tracks[0]?.clips[0];
+    expect(clip?.transform.position.x).toBe(0);
+    expect(clip?.keyframes).toEqual([
+      { ...keyframes[0], value: 5 },
+      { ...keyframes[1], value: 45 },
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Eye, EyeOff, Volume2, VolumeX, Lock, MoreHorizontal, Trash2, Pencil, AlignLeft, Link2, Unlink } from "@/icons/lucide-compat";
+import { Eye, EyeOff, Volume2, VolumeX, Lock, MoreHorizontal, Trash2, Pencil, AlignLeft, Link2, Unlink, Circle } from "@/icons/lucide-compat";
 import {
   ToolcraftContextMenu as ContextMenu,
   ToolcraftDropdownMenu as DropdownMenu,
@@ -9,6 +9,7 @@ import { ToolcraftTextInputControl } from "@openreel/ui";
 import type { Track } from "@openreel/core";
 import {
   getTrackItems,
+  isTrackRecordingKeyframes,
   trackHasAudioItems,
   trackHasVisualItems,
 } from "@openreel/core";
@@ -38,6 +39,7 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
   const compact = useCompactEditor();
   const {
     lockTrack,
+    setTrackKeyframeRecording,
     hideTrack,
     muteTrack,
     soloTrack,
@@ -57,6 +59,8 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
 
   const trackInfo = getTrackInfo(track, index);
   const isVisual = trackHasVisualItems(project, track.id);
+  const recording = isTrackRecordingKeyframes(track);
+  const showRecordDot = isVisual && recording;
   const isAudio = trackHasAudioItems(project, track.id);
   const hasSoloedAudioTrack = project.timeline.tracks.some(
     (candidate) =>
@@ -124,6 +128,17 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
       isDisabled: !hasGaps,
       onClick: handleRemoveGaps,
     },
+    ...(isVisual
+      ? [
+          {
+            label: recording
+              ? "Stop recording keyframes"
+              : "Record keyframes",
+            icon: <Circle size={14} aria-hidden />,
+            onClick: () => setTrackKeyframeRecording(track.id, !recording),
+          } satisfies ContextMenuOption,
+        ]
+      : []),
     ...(track.groupId
       ? [
           {
@@ -189,12 +204,22 @@ export const TrackHeader: React.FC<TrackHeaderProps> = React.memo(function Track
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <span
-                className="block truncate text-[13px] font-semibold text-fg-2 cursor-grab active:cursor-grabbing"
-                onDoubleClick={startRename}
-              >
-                {track.name || trackInfo.label}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className="block truncate text-[13px] font-semibold text-fg-2 cursor-grab active:cursor-grabbing"
+                  onDoubleClick={startRename}
+                >
+                  {track.name || trackInfo.label}
+                </span>
+                {showRecordDot && (
+                  <Circle
+                    size={8}
+                    className="fill-current text-status-error shrink-0"
+                    aria-label="Recording keyframes"
+                    title="Recording keyframes: moving an animated layer adds keyframes"
+                  />
+                )}
+              </div>
             )}
           </div>
 

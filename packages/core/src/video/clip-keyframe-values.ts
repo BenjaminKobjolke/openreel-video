@@ -1,4 +1,4 @@
-import type { Clip, Keyframe, Transform } from "../types/timeline";
+import type { Clip, Keyframe, Track, Transform } from "../types/timeline";
 import { keyframeEngine } from "./keyframe-engine";
 
 /** Shared clip keyframe property mappings and value helpers. */
@@ -29,6 +29,12 @@ type TransformProperty = (typeof CLIP_TRANSFORM_KEYFRAME_PROPERTIES)[number];
 export interface TransformKeyframeChange {
   keyframes: Keyframe[];
   transform: Transform;
+}
+
+export function isTrackRecordingKeyframes(
+  track: Pick<Track, "keyframeRecording">,
+): boolean {
+  return track.keyframeRecording === true;
 }
 
 export function getClipLocalTime(clip: ClipTime, playheadPosition: number): number {
@@ -92,6 +98,7 @@ export function applyTransformChangeToKeyframes(
   nextTransform: Transform,
   localTime: number,
   editedProperties: readonly TransformProperty[],
+  recordKeyframes: boolean,
 ): TransformKeyframeChange {
   let nextKeyframes = [...keyframes];
   let staticTransform = nextTransform;
@@ -113,12 +120,21 @@ export function applyTransformChangeToKeyframes(
       typeof animatedValue === "number" &&
       Math.abs(requestedValue - animatedValue) > KEYFRAME_VALUE_TOLERANCE
     ) {
-      nextKeyframes = upsertClipKeyframe(
-        nextKeyframes,
-        property,
-        localTime,
-        requestedValue,
-      );
+      if (recordKeyframes) {
+        nextKeyframes = upsertClipKeyframe(
+          nextKeyframes,
+          property,
+          localTime,
+          requestedValue,
+        );
+      } else {
+        const delta = requestedValue - animatedValue;
+        nextKeyframes = nextKeyframes.map((keyframe) =>
+          keyframe.property === property && typeof keyframe.value === "number"
+            ? { ...keyframe, value: keyframe.value + delta }
+            : keyframe,
+        );
+      }
     }
     staticTransform = setTransformProperty(
       staticTransform,

@@ -554,6 +554,45 @@ describe("ActionExecutor track/rename", () => {
   });
 });
 
+describe("ActionExecutor track/keyframe-recording", () => {
+  it("sets recording and restores a missing value to off on undo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip();
+
+    const result = await executor.execute(
+      {
+        id: "track-recording-1",
+        type: "track/keyframe-recording",
+        params: { trackId: "t1", recording: true },
+        timestamp: Date.now(),
+      } as Action,
+      project,
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0].keyframeRecording).toBe(true);
+
+    await executor.undo(project);
+    expect(project.timeline.tracks[0].keyframeRecording).toBe(false);
+  });
+
+  it("rejects a non-boolean recording value", async () => {
+    const executor = new ActionExecutor();
+    const result = await executor.execute(
+      {
+        id: "track-recording-invalid",
+        type: "track/keyframe-recording",
+        params: { trackId: "t1", recording: "yes" },
+        timestamp: Date.now(),
+      } as unknown as Action,
+      makeProjectWithClip(),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe("INVALID_PARAMS");
+  });
+});
+
 describe("ActionExecutor track/duplicate", () => {
   it("duplicates clips and remaps transition references with one-step undo", async () => {
     const executor = new ActionExecutor();

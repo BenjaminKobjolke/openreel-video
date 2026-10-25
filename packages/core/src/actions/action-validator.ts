@@ -299,6 +299,7 @@ export class ActionValidator {
 
       case "track/remove":
       case "track/lock":
+      case "track/keyframe-recording":
       case "track/hide":
       case "track/mute":
       case "track/solo":
@@ -329,6 +330,16 @@ export class ActionValidator {
             code: "INVALID_PARAMS",
             message: "Locked parameter must be a boolean",
             path: "params.locked",
+          });
+        }
+        if (
+          action.type === "track/keyframe-recording" &&
+          typeof action.params.recording !== "boolean"
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Recording parameter must be a boolean",
+            path: "params.recording",
           });
         }
         if (

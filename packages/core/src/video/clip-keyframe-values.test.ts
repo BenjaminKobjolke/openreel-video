@@ -4,6 +4,7 @@ import {
   applyTransformChangeToKeyframes,
   getClipLocalTime,
   getClipPropertyBaseValue,
+  isTrackRecordingKeyframes,
   upsertClipKeyframe,
 } from "./clip-keyframe-values";
 
@@ -76,7 +77,7 @@ describe("clip keyframe values", () => {
   it("passes static transform edits through when no properties are keyed", () => {
     const nextTransform = { ...transform, position: { x: 30, y: 240 } };
 
-    expect(applyTransformChangeToKeyframes([], transform, nextTransform, 4, [])).toEqual({
+    expect(applyTransformChangeToKeyframes([], transform, nextTransform, 4, [], true)).toEqual({
       keyframes: [],
       transform: nextTransform,
     });
@@ -92,6 +93,7 @@ describe("clip keyframe values", () => {
       nextTransform,
       10,
       ["position.y"],
+      true,
     );
 
     expect(result.keyframes).toHaveLength(2);
@@ -117,6 +119,7 @@ describe("clip keyframe values", () => {
       nextTransform,
       5,
       ["position.y"],
+      true,
     );
 
     expect(result.keyframes).toEqual(keyframes);
@@ -139,7 +142,7 @@ describe("clip keyframe values", () => {
       nextTransform,
       5,
       ["rotation"],
-      ["rotation"],
+      true,
     );
 
     expect(result.keyframes).toEqual([
@@ -162,11 +165,43 @@ describe("clip keyframe values", () => {
       { ...transform, position: { x: 10, y: 100 } },
       getClipLocalTime(clip, 15),
       ["position.y"],
+      true,
     );
 
     expect(result.keyframes.map(({ time, value }) => ({ time, value }))).toEqual([
       { time: 0, value: 0 },
       { time: 10, value: 100 },
     ]);
+  });
+
+  it("shifts every keyframe of the edited property when recording is off", () => {
+    const keyframes = [
+      keyframe({ id: "x-start", property: "position.x", time: 0, value: 10 }),
+      keyframe({ id: "y-middle", property: "position.y", time: 5, value: 50 }),
+      keyframe({ id: "x-end", property: "position.x", time: 10, value: 30 }),
+    ];
+    const nextTransform = { ...transform, position: { x: 25, y: 200 } };
+
+    const result = applyTransformChangeToKeyframes(
+      keyframes,
+      transform,
+      nextTransform,
+      5,
+      ["position.x"],
+      false,
+    );
+
+    expect(result.keyframes).toEqual([
+      { ...keyframes[0], value: 15 },
+      keyframes[1],
+      { ...keyframes[2], value: 35 },
+    ]);
+    expect(result.transform.position.x).toBe(transform.position.x);
+  });
+
+  it("treats missing track recording state as off", () => {
+    expect(isTrackRecordingKeyframes({})).toBe(false);
+    expect(isTrackRecordingKeyframes({ keyframeRecording: false })).toBe(false);
+    expect(isTrackRecordingKeyframes({ keyframeRecording: true })).toBe(true);
   });
 });

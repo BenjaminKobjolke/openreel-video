@@ -16,6 +16,7 @@ export type TrackSlice = Pick<
   | "renameTrack"
   | "reorderTrack"
   | "lockTrack"
+  | "setTrackKeyframeRecording"
   | "hideTrack"
   | "muteTrack"
   | "soloTrack"
@@ -146,6 +147,21 @@ export function createTrackSlice(set: Set, get: Get): TrackSlice {
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, locked },
+      };
+      const result = await actionExecutor.execute(action, project);
+      if (result.success) {
+        set({ project: { ...project } });
+      }
+      return result;
+    },
+
+    setTrackKeyframeRecording: async (trackId, recording) => {
+      const { project, actionExecutor } = get();
+      const action: Action = {
+        type: "track/keyframe-recording",
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: { trackId, recording },
       };
       const result = await actionExecutor.execute(action, project);
       if (result.success) {

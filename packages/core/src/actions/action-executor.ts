@@ -717,6 +717,16 @@ export class ActionExecutor {
         break;
       }
 
+      case "track/keyframe-recording": {
+        const params = action.params as { trackId: string; recording: boolean };
+        timeline.tracks = timeline.tracks.map((t: MutableTrack) =>
+          t.id === params.trackId
+            ? { ...t, keyframeRecording: params.recording }
+            : t,
+        );
+        break;
+      }
+
       case "track/hide": {
         const params = action.params as { trackId: string; hidden: boolean };
         timeline.tracks = timeline.tracks.map((t: MutableTrack) =>

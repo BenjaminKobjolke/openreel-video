@@ -19,6 +19,7 @@ import type { TextClip } from "../text/types";
 import type { ShapeClip, StickerClip, SVGClip } from "../graphics/types";
 import type { AdjustmentLayer } from "../video/adjustment-layer-engine";
 import type { MotionCompositionInstance } from "../motion/types";
+import { isTrackRecordingKeyframes } from "../video/clip-keyframe-values";
 import { getActionHandler } from "./registry";
 
 type TrackOwnedProjectItem =
@@ -324,6 +325,18 @@ export class InverseActionGenerator {
         return this.createInverseAction(action, "track/lock", {
           trackId: action.params.trackId,
           locked: track.locked,
+        });
+      }
+
+      case "track/keyframe-recording": {
+        const track = timeline.tracks.find(
+          (t) => t.id === action.params.trackId,
+        );
+        if (!track) return null;
+
+        return this.createInverseAction(action, "track/keyframe-recording", {
+          trackId: action.params.trackId,
+          recording: isTrackRecordingKeyframes(track),
         });
       }
 

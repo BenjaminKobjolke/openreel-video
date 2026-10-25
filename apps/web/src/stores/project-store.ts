@@ -44,6 +44,7 @@ import {
   CLIP_TRANSFORM_KEYFRAME_PROPERTIES,
   applyTransformChangeToKeyframes,
   getClipLocalTime,
+  isTrackRecordingKeyframes,
   getBuiltInEditingTemplate,
   getBuiltInEditingTemplates,
   getMotionPreset,
@@ -191,6 +192,7 @@ export interface ProjectState {
   removeTrack: (trackId: string) => Promise<ActionResult>;
   reorderTrack: (trackId: string, newPosition: number) => Promise<ActionResult>;
   lockTrack: (trackId: string, locked: boolean) => Promise<ActionResult>;
+  setTrackKeyframeRecording: (trackId: string, recording: boolean) => Promise<ActionResult>;
   hideTrack: (trackId: string, hidden: boolean) => Promise<ActionResult>;
   muteTrack: (trackId: string, muted: boolean) => Promise<ActionResult>;
   soloTrack: (trackId: string, solo: boolean) => Promise<ActionResult>;
@@ -2497,10 +2499,11 @@ export const useProjectStore = create<ProjectState>()(
 
         // Timeline clips are undoable via the action system (the deep-merge of
         // nested axes happens in the transform/update apply handler).
-        const timelineClip = project.timeline.tracks
-          .flatMap((track) => track.clips)
-          .find((clip) => clip.id === clipId);
-        if (timelineClip) {
+        const owningTrack = project.timeline.tracks.find((track) =>
+          track.clips.some((clip) => clip.id === clipId),
+        );
+        const timelineClip = owningTrack?.clips.find((clip) => clip.id === clipId);
+        if (timelineClip && owningTrack) {
           const keyframeChange = applyTransformChangeToKeyframes(
             timelineClip.keyframes,
             timelineClip.transform,
@@ -2510,6 +2513,7 @@ export const useProjectStore = create<ProjectState>()(
               useTimelineStore.getState().playheadPosition,
             ),
             editedProperties,
+            isTrackRecordingKeyframes(owningTrack),
           );
           const hasStaticTransformChange =
             JSON.stringify(timelineClip.transform) !==

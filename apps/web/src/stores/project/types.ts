@@ -154,6 +154,7 @@ export interface ProjectState {
   removeTrack: (trackId: string) => Promise<ActionResult>;
   reorderTrack: (trackId: string, newPosition: number) => Promise<ActionResult>;
   lockTrack: (trackId: string, locked: boolean) => Promise<ActionResult>;
+  setTrackKeyframeRecording: (trackId: string, recording: boolean) => Promise<ActionResult>;
   hideTrack: (trackId: string, hidden: boolean) => Promise<ActionResult>;
   muteTrack: (trackId: string, muted: boolean) => Promise<ActionResult>;
   soloTrack: (trackId: string, solo: boolean) => Promise<ActionResult>;

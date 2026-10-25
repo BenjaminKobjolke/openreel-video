@@ -149,6 +149,7 @@ export type TrackAction =
   | { type: "track/rename"; params: { trackId: string; name: string } }
   | { type: "track/reorder"; params: { trackId: string; newPosition: number } }
   | { type: "track/lock"; params: { trackId: string; locked: boolean } }
+  | { type: "track/keyframe-recording"; params: { trackId: string; recording: boolean } }
   | { type: "track/hide"; params: { trackId: string; hidden: boolean } }
   | { type: "track/mute"; params: { trackId: string; muted: boolean } }
   | { type: "track/solo"; params: { trackId: string; solo: boolean } };
