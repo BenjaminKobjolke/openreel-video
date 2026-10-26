@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  reporter: "line",
+  reporter: "list",
   use: {
     baseURL: "http://localhost:5174",
     headless: true,
