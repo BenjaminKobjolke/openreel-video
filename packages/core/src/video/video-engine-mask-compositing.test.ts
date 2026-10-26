@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Transform } from "../types/timeline";
 import type { Mask } from "./mask-engine";
+import {
+  loadVideoEngine,
+  stubWorkerSelf,
+  VIDEO_ENGINE_IMPORT_TIMEOUT_MS,
+} from "./video-engine.fixtures";
 
 function bitmap(name: string) {
   return { name, close: vi.fn(), width: 640, height: 360 } as unknown as ImageBitmap;
@@ -34,18 +39,18 @@ const mask: Mask = {
 };
 
 describe("VideoEngine mask compositing", () => {
+  let VideoEngine: Awaited<ReturnType<typeof loadVideoEngine>>;
+
+  beforeAll(async () => {
+    VideoEngine = await loadVideoEngine();
+  }, VIDEO_ENGINE_IMPORT_TIMEOUT_MS);
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("isolates the transformed clip and applies masks before export compositing", async () => {
-    vi.stubGlobal("self", {
-      onmessage: null,
-      postMessage: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
-    const { VideoEngine } = await import("./video-engine");
+    stubWorkerSelf();
     const layerCtx = {} as OffscreenCanvasRenderingContext2D;
     vi.stubGlobal(
       "OffscreenCanvas",

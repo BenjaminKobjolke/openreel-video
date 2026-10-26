@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Project } from "../types/project";
 import type { MotionComposition, MotionScene3DLayer } from "../motion/types";
+import {
+  loadVideoEngine,
+  stubWorkerSelf,
+  VIDEO_ENGINE_IMPORT_TIMEOUT_MS,
+} from "./video-engine.fixtures";
 
 const defaultMotionTransform = {
   position: { x: 960, y: 540, z: 0 },
@@ -14,6 +19,12 @@ const defaultMotionTransform = {
 };
 
 describe("VideoEngine motion asset resolver", () => {
+  let VideoEngine: Awaited<ReturnType<typeof loadVideoEngine>>;
+
+  beforeAll(async () => {
+    VideoEngine = await loadVideoEngine();
+  }, VIDEO_ENGINE_IMPORT_TIMEOUT_MS);
+
   afterEach(() => {
     vi.unstubAllGlobals();
     Object.defineProperty(globalThis, "openreel", {
@@ -23,13 +34,7 @@ describe("VideoEngine motion asset resolver", () => {
   });
 
   it("renders bound creation scene3d layers through the Aurora bridge", async () => {
-    vi.stubGlobal("self", {
-      onmessage: null,
-      postMessage: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
-    const { VideoEngine } = await import("./video-engine");
+    stubWorkerSelf();
     const engine = new VideoEngine();
     const image = {
       close: vi.fn(),

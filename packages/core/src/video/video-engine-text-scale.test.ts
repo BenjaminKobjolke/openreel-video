@@ -1,21 +1,27 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { titleEngine } from "../text/title-engine";
 import { DEFAULT_TEXT_STYLE, DEFAULT_TEXT_TRANSFORM } from "../text/types";
 import type { TextClip } from "../text/types";
+import {
+  loadVideoEngine,
+  stubWorkerSelf,
+  VIDEO_ENGINE_IMPORT_TIMEOUT_MS,
+} from "./video-engine.fixtures";
 
 describe("VideoEngine text output scaling", () => {
+  let VideoEngine: Awaited<ReturnType<typeof loadVideoEngine>>;
+
+  beforeAll(async () => {
+    VideoEngine = await loadVideoEngine();
+  }, VIDEO_ENGINE_IMPORT_TIMEOUT_MS);
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   it("passes the project-to-output ratio to TitleEngine", async () => {
-    vi.stubGlobal("self", {
-      onmessage: null,
-      postMessage: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
+    stubWorkerSelf();
 
     const renderedCanvas = {} as OffscreenCanvas;
     const renderText = vi.spyOn(titleEngine, "renderText").mockReturnValue({
@@ -39,7 +45,6 @@ describe("VideoEngine text output scaling", () => {
       effects: [],
     };
 
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine() as unknown as {
       renderTextClipToCanvasCtx(
         context: OffscreenCanvasRenderingContext2D,

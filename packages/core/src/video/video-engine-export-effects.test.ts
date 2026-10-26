@@ -1,7 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../types/project";
 import type { Effect } from "../types/timeline";
 import type { ClipColorGrading } from "./color-grading-engine";
+import {
+  loadVideoEngine,
+  stubWorkerSelf,
+  VIDEO_ENGINE_IMPORT_TIMEOUT_MS,
+} from "./video-engine.fixtures";
 import {
   colorWheels,
   curves,
@@ -65,6 +70,8 @@ vi.mock("./color-grading-engine", async () => {
 });
 
 describe("VideoEngine export frame effects", () => {
+  let VideoEngine: Awaited<ReturnType<typeof loadVideoEngine>>;
+
   const ctx = {
     fillStyle: "",
     globalAlpha: 1,
@@ -85,6 +92,10 @@ describe("VideoEngine export frame effects", () => {
     measureText: vi.fn(() => ({ width: 0 })),
     fillText: vi.fn(),
   };
+
+  beforeAll(async () => {
+    VideoEngine = await loadVideoEngine();
+  }, VIDEO_ENGINE_IMPORT_TIMEOUT_MS);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,12 +118,7 @@ describe("VideoEngine export frame effects", () => {
     }
 
     vi.stubGlobal("OffscreenCanvas", MockOffscreenCanvas);
-    vi.stubGlobal("self", {
-      onmessage: null,
-      postMessage: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
+    stubWorkerSelf();
   });
 
   afterEach(() => {
@@ -162,7 +168,6 @@ describe("VideoEngine export frame effects", () => {
     };
     const clip = makeClip([clipEffect], colorGrading);
     const project = makeProject(clip);
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine();
 
     Object.assign(engine as unknown as Record<string, unknown>, {
@@ -228,7 +233,6 @@ describe("VideoEngine export frame effects", () => {
     vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(finalBitmap));
 
     const project = makeProject(makeClip([], {} as ClipColorGrading));
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine();
     Object.assign(engine as unknown as Record<string, unknown>, {
       initialized: true,
@@ -275,7 +279,6 @@ describe("VideoEngine export frame effects", () => {
     vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(finalBitmap));
 
     const project = makeProject(makeClip([clipEffect], {} as ClipColorGrading));
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine();
     engine.exportMode = true;
     Object.assign(engine as unknown as Record<string, unknown>, {
@@ -327,7 +330,6 @@ describe("VideoEngine export frame effects", () => {
         params: { value: 20 },
       },
     ];
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine() as unknown as {
       drawOverlayCanvasWithEffects: (
         context: typeof ctx,
@@ -398,7 +400,6 @@ describe("VideoEngine export frame effects", () => {
         transform,
       }],
     };
-    const { VideoEngine } = await import("./video-engine");
     const engine = new VideoEngine();
     Object.assign(engine as unknown as Record<string, unknown>, {
       initialized: true,
