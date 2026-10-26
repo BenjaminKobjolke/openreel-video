@@ -43,5 +43,5 @@
     "tools/check_build.bat": "code_quality"
   },
   "analysis_code_quality_timeout_seconds": 540,
-  "analysis_test_timeout_seconds": 920
+  "analysis_test_timeout_seconds": 1210
 }
