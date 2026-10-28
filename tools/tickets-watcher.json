@@ -1,6 +1,6 @@
 {
   "files": {
-    "TICKETS_WATCHER_COMMANDS.md": 2
+    "TICKETS_WATCHER_COMMANDS.md": 3
   },
   "command_check_scripts": [
     "analyze_changed_and_new_files.bat",
@@ -15,10 +15,16 @@
     "pnpm test",
     "pnpm --filter @openreel/studio test:e2e",
     "tools/analyze_changed_and_new_files.bat",
-    "tools/check_build.bat"
+    "tools/check_build.bat",
+    "tools\\analyze_code.bat"
   ],
   "analysis_commands_seen": {
     "scripts": [
+      "analyze_changed_and_new_files.bat",
+      "analyze_code.bat",
+      "analyze_code_config.bat",
+      "analyze_code_config.example.bat",
+      "check_build.bat",
       "graphify_update.bat",
       "restart.bat"
     ],
@@ -43,5 +49,6 @@
     "tools/check_build.bat": "code_quality"
   },
   "analysis_code_quality_timeout_seconds": 540,
-  "analysis_test_timeout_seconds": 1210
+  "analysis_test_timeout_seconds": 1210,
+  "project_id": 12357
 }
