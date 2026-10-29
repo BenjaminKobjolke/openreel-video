@@ -1,4 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  app: { getPath: () => "" },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value, "utf8"),
+    decryptString: (value: Buffer) => value.toString("utf8"),
+  },
+}));
+
 import { buildUpstreamRequest } from "../src/main/ipc/cloud";
 
 describe("buildUpstreamRequest", () => {

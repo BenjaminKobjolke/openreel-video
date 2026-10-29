@@ -1,4 +1,6 @@
 import { promises as fs } from "node:fs";
+import { app, safeStorage } from "electron";
+import path from "node:path";
 
 export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
@@ -55,11 +57,8 @@ let singleton: KeyStore | null = null;
 
 export function getKeyStore(): KeyStore {
   if (!singleton) {
-    // Resolved lazily so this module stays unit-testable without an Electron runtime.
-    const { app, safeStorage } = require("electron") as typeof import("electron");
-    const nodePath = require("node:path") as typeof import("node:path");
     singleton = new KeyStore(
-      nodePath.join(app.getPath("userData"), "openreel-keys.json"),
+      path.join(app.getPath("userData"), "openreel-keys.json"),
       safeStorage,
     );
   }

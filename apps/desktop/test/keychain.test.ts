@@ -1,8 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { KeyStore, type SafeStorageLike } from "../src/main/ipc/keychain";
+let userDataDir = "";
+
+vi.mock("electron", () => ({
+  app: {
+    getPath: (name: string) => {
+      if (name !== "userData") throw new Error(`unexpected path: ${name}`);
+      return userDataDir;
+    },
+  },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value, "utf8"),
+    decryptString: (value: Buffer) => value.toString("utf8"),
+  },
+}));
+
+import { getKeyStore, KeyStore, type SafeStorageLike } from "../src/main/ipc/keychain";
 
 const fakeSafe = (available = true): SafeStorageLike => ({
   isEncryptionAvailable: () => available,
@@ -13,12 +29,25 @@ const fakeSafe = (available = true): SafeStorageLike => ({
 let file: string;
 beforeEach(() => {
   file = path.join(tmpdir(), `openreel-kc-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  userDataDir = path.join(tmpdir(), `openreel-kc-user-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 });
 afterEach(async () => {
   await fs.rm(file, { force: true });
+  await fs.rm(userDataDir, { recursive: true, force: true });
 });
 
 describe("KeyStore", () => {
+  it("getKeyStore reuses its instance and persists under userData", async () => {
+    await fs.mkdir(userDataDir, { recursive: true });
+
+    const first = getKeyStore();
+    expect(getKeyStore()).toBe(first);
+
+    await first.set("openai", "secret");
+    expect(await first.get("openai")).toBe("secret");
+    expect(await fs.readFile(path.join(userDataDir, "openreel-keys.json"), "utf8")).toContain("openai");
+  });
+
   it("set/get/delete round-trips and persists ciphertext (not plaintext) on disk", async () => {
     const ks = new KeyStore(file, fakeSafe());
     await ks.set("openai", "sk-secret-value");
