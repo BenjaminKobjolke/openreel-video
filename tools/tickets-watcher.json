@@ -33,7 +33,7 @@
   "analysis_code_quality_answered": true,
   "analysis_command_states": {
     "pnpm test": {
-      "test": "failed"
+      "test": "green"
     },
     "pnpm --filter @openreel/studio test:e2e": {
       "test": "green"
@@ -43,6 +43,9 @@
     },
     "tools/check_build.bat": {
       "code_quality": "green"
+    },
+    "tools\\analyze_code.bat": {
+      "code_quality": "failed"
     }
   },
   "analysis_command_kinds": {
