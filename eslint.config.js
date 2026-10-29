@@ -1,6 +1,6 @@
 import workspaceConfig from "./apps/studio/eslint.config.js";
 
-const [recommendedConfig, typescriptConfig] = workspaceConfig;
+const [recommendedConfig, typescriptConfig, ambientTypeScriptConfig] = workspaceConfig;
 
 export default [
   recommendedConfig,
@@ -10,6 +10,7 @@ export default [
     },
   },
   typescriptConfig,
+  ambientTypeScriptConfig,
   {
     ignores: [
       "**/node_modules/**",

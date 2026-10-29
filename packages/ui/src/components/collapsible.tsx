@@ -45,8 +45,10 @@ Collapsible.displayName = "Collapsible"
 
 const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger
 
-interface CollapsibleContentProps
-  extends Omit<React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.CollapsibleContent>, 'forceMount'> {}
+type CollapsibleContentProps = Omit<
+  React.ComponentPropsWithoutRef<typeof CollapsiblePrimitive.CollapsibleContent>,
+  'forceMount'
+>;
 
 const CollapsibleContent = React.forwardRef<
   React.ElementRef<typeof motion.div>,

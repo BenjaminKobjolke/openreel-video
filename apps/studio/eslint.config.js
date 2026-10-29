@@ -41,6 +41,8 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "warn",
       "no-unused-vars": "off",
+      // tsc checks undefined names, as typescript-eslint recommends.
+      "no-undef": "off",
       "no-empty": "warn",
       "no-case-declarations": "warn",
       "react-hooks/rules-of-hooks": "warn",
@@ -48,6 +50,13 @@ export default [
     },
     linterOptions: {
       reportUnusedDisableDirectives: false,
+    },
+  },
+  {
+    // Ambient handle types are intentionally empty.
+    files: ["**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": ["error", { allowInterfaces: "always" }],
     },
   },
   {

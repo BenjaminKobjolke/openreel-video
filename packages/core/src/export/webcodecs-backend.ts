@@ -80,12 +80,11 @@ export class WebCodecsBackend implements EncoderBackend {
 
     this.writableStream = writableStream;
     const diskWriter = writableStream;
-    const self = this;
     const chunkWriter = new WritableStream<{ data: Uint8Array; position: number }>({
-      async write(chunk) {
+      write: async (chunk) => {
         await diskWriter.seek(chunk.position);
         await diskWriter.write(chunk.data as unknown as FileSystemWriteChunkType);
-        self.bytesWritten += chunk.data.byteLength;
+        this.bytesWritten += chunk.data.byteLength;
       },
     });
 

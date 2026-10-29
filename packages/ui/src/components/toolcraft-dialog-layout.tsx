@@ -127,8 +127,7 @@ export function ToolcraftLayout({
   )
 }
 
-export interface ToolcraftLayoutContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+export type ToolcraftLayoutContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function ToolcraftLayoutContent({
   className,

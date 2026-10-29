@@ -14,7 +14,7 @@ fs.mkdirSync(dir,{recursive:true});
   step++;
   const first=step===1; const calls=first?plan:[];
   if(!first&&delay) await new Promise(r=>setTimeout(r,delay));
-  try {await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:calls.length?'Preparing a precise edit.':'Edit complete.',...(calls.length?{tool_calls:calls.map((c,i)=>({id:`fixture-${i}`,type:'function',function:{name:c.name,arguments:JSON.stringify(c.args)}}))}:{})},finish_reason:calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:5,completion_tokens:5}})});}catch{}
+  try {await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:calls.length?'Preparing a precise edit.':'Edit complete.',...(calls.length?{tool_calls:calls.map((c,i)=>({id:`fixture-${i}`,type:'function',function:{name:c.name,arguments:JSON.stringify(c.args)}}))}:{})},finish_reason:calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:5,completion_tokens:5}})});}catch{/* The route may already have closed. */}
  });
  const state=()=>page.evaluate(async()=>{const {useProjectStore}=await import(window.__testModuleURLs.project);const {createPortableEdit}=await import('/@fs'+window.__testRepoRoot+'/packages/core/src/editing/portable-project.ts');return createPortableEdit(useProjectStore.getState().getFullProject());});
  const poll=async(predicate,timeout=30000)=>{const until=Date.now()+timeout;while(Date.now()<until){if(await page.evaluate(predicate))return;await page.waitForTimeout(200);}throw new Error('Condition timed out: '+predicate.toString());};

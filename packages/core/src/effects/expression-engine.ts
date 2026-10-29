@@ -41,8 +41,10 @@ export interface ExpressionContext {
   noise: (x: number) => number;
 }
 
+type CompiledExpression = (context: ExpressionContext) => unknown;
+
 export class ExpressionEngine {
-  private cache = new Map<string, Function>();
+  private cache = new Map<string, CompiledExpression>();
 
   evaluate(expression: string, context: ExpressionContext): any {
     if (!this.cache.has(expression)) {
@@ -53,14 +55,14 @@ export class ExpressionEngine {
     return fn(context);
   }
 
-  private compile(expression: string): Function {
+  private compile(expression: string): CompiledExpression {
     const safeContext = this.createSafeContext();
 
     try {
       return new Function(
         ...Object.keys(safeContext),
         `return (${expression});`,
-      ).bind(null, ...Object.values(safeContext));
+      ).bind(null, ...Object.values(safeContext)) as CompiledExpression;
     } catch (error) {
       console.error("Expression compilation error:", error);
       return () => 0;

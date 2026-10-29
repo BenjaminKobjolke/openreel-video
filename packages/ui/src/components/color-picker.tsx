@@ -124,7 +124,7 @@ function parseColor(value: string): ParsedColor {
   }
 
   const rgbMatch = normalized.match(
-    /^rgba?\(\s*([^\s,]+)\s*,\s*([^\s,]+)\s*,\s*([^\s,\/\)]+)(?:\s*[,\/]\s*([^\s\)]+))?\s*\)$/,
+    /^rgba?\(\s*([^\s,]+)\s*,\s*([^\s,]+)\s*,\s*([^\s,/]+)(?:\s*[,/]\s*([^\s)]+))?\s*\)$/,
   )
   if (rgbMatch) {
     const red = parseRgbChannel(rgbMatch[1])
