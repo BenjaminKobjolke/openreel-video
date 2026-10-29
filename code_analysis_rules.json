@@ -7,10 +7,798 @@
     "exclude_patterns": [
       "node_modules/**",
       "dist/**",
+      "apps/sync-server/web-dist/**",
+      "creating-views/**",
       "build/**",
       "coverage/**",
       ".git/**",
       "code_analysis_results/**"
+    ],
+    "exceptions": [
+      {
+        "file": "apps/image/src/components/editor/canvas/Canvas.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/components/editor/ExportDialog.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/components/editor/inspector/ShapeSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/components/editor/inspector/TextSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/components/editor/panels/LeftPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/effects/blend-modes.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/effects/layer-styles.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/services/export-service.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/stores/project-store.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/stores/ui-store.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/tools/transform/free-transform.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/tools/transform/liquify.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/tools/transform/warp.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/tools/vector/path-operations.ts",
+        "error": null
+      },
+      {
+        "file": "apps/image/src/tools/vector/pen-tool.ts",
+        "error": null
+      },
+      {
+        "file": "apps/studio/src/components/effect/EffectEditor.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/audio-bridge-effects.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/audio-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/effects-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/graphics-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/media-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/photo-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/playback-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/render-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/text-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/bridges/transition-bridge.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/AssetsPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/EditorInterface.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/ExportDialog.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/AdjustmentLayerSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/AudioDuckingSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/AudioEffectsSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/AutoCaptionPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/ClipTransitionSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/EmphasisAnimationSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/KeyframesSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/MaskSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/MotionPresetsPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/MultiCameraPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/MultiClipInspector.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/NestedSequenceSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/NoiseReductionSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/ParticleEffectsSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/ScopesPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/ShapeSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/SpeedRampSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/TemplatesBrowserPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/TextAnimationSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/TextSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/TransitionInspector.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/inspector/VideoEffectsSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/KeyframeEditorPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/panels/EffectsTransitionsPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/preview/canvas-renderers.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/preview/CropModeView.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/preview/threejs-layer-renderer.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/SearchModal.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/Timeline.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/timeline/ClipComponent.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/editor/Toolbar.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/components/welcome/TemplatePreviewModal.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/AssetPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/CreationWorkspacePanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/EffectsPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/GraphEditorPanel.handles.test.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/GraphEditorPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/LayerPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/MasksPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/MotionSyncPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/MotionTimeline.shortcuts.test.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/MotionTimeline.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/MotionTrackingPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/primitives.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/PropertiesPanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/RenderQueuePanel.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/ShapeContentsSection.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/components/StageCanvas.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/creation-workspace.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/export-motion-frame.test.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/export-motion-frame.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/export-range-sequence.test.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/MotionCreatorShell.tsx",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/motion/stores/motion-store.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/agent/live-host.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/auto-save.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/background-generator.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/export-presets.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/export-runner.test.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/export-runner.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/keyboard-shortcuts.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/motion-presets.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/project-manager.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/services/secure-storage.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/chat-store.test.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/chat-store.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/project-store.test.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/project-store.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/project/history-slice.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/project/text-graphics-slice.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/project/types.ts",
+        "error": null
+      },
+      {
+        "file": "apps/web/src/stores/ui-store.ts",
+        "error": null
+      },
+      {
+        "file": "mediabunny.d.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/creation-product-motion.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/executor.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.comp-level.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.layer-ops.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.parity-widening.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.paths-kf.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.shape-contents.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.text-expr.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/agent/src/registry.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/actions/action-executor.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/actions/action-executor.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/actions/action-validator.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/actions/inverse-action-generator.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/ai/auto-reframe-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/ai/background-removal-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/ai/person-segmentation-worker.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/ai/temporal-person-mask.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/animation/animation-importer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/animation/gsap-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/audio-effects-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/audio-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/realtime-audio-graph.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/sound-generator.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/sound-library-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/audio/volume-automation.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/creation/geometry/geometry.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/creation/runtime.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/editing-templates/built-in-templates.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/export/export-engine.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/export/export-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/graphics/graphics-engine.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/graphics/graphics-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/media/ffmpeg-fallback.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/media/media-import-service.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/media/mediabunny-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/importers/lottie-importer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/importers/svg-importer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-animation-presets.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-camera.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-effects.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-expressions.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-expressions.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-keyframes.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-keyframes.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-layout.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-lights.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-masks.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-presets.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-renderer-contents.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-renderer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-shader-renderer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-shape-contents.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-shape-modifiers.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-shape-modifiers.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-shape-path.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-text-animators.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-three-renderer.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-tracking.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/motion-ui-builder.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/shaders/paper-shaders.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/motion/types.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/multicam/automatic-edit.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/multicam/shot-planner.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/playback/playback-controller.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/storage/storage-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/template/template-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/text/character-animator.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/text/subtitle-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/text/text-animation-presets.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/text/text-animation.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/text/title-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/timeline/clip-manager.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/timeline/clip-manager.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/types/actions.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/types/effects.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/color-grading-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/keyframe-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/mask-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/multicam-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/playback-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/shaders/index.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/transform-animator.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/transition-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/upscaling/upscaling-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/video-effects-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/video-engine.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/webgpu-effects-processor.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/webgpu-renderer-impl.ts",
+        "error": null
+      },
+      {
+        "file": "packages/core/src/video/webgpu-types.d.ts",
+        "error": null
+      },
+      {
+        "file": "packages/fxpkg/src/nodelib.ts",
+        "error": null
+      },
+      {
+        "file": "packages/image-core/src/adjustments.ts",
+        "error": null
+      },
+      {
+        "file": "packages/image-core/src/commands.test.ts",
+        "error": null
+      },
+      {
+        "file": "packages/image-core/src/commands.ts",
+        "error": null
+      },
+      {
+        "file": "packages/ui/src/components/toolcraft-input-control.tsx",
+        "error": null
+      }
     ]
   },
   "pmd_duplicates": {
@@ -20,6 +808,8 @@
       "javascript": [
         "node_modules/**",
         "dist/**",
+        "apps/sync-server/web-dist/**",
+        "creating-views/**",
         "build/**",
         "coverage/**",
         ".git/**",
@@ -28,6 +818,8 @@
       "typescript": [
         "node_modules/**",
         "dist/**",
+        "apps/sync-server/web-dist/**",
+        "creating-views/**",
         "build/**",
         "coverage/**",
         ".git/**",
@@ -61,6 +853,8 @@
     "exclude_patterns": [
       "node_modules/**",
       "dist/**",
+      "apps/sync-server/web-dist/**",
+      "creating-views/**",
       "build/**",
       "coverage/**",
       ".git/**",
