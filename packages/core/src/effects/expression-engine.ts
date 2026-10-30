@@ -1,6 +1,6 @@
 export interface ExpressionContext {
   time: number;
-  value: any;
+  value: unknown;
   velocity: number;
   fps: number;
   width: number;
@@ -46,7 +46,7 @@ type CompiledExpression = (context: ExpressionContext) => unknown;
 export class ExpressionEngine {
   private cache = new Map<string, CompiledExpression>();
 
-  evaluate(expression: string, context: ExpressionContext): any {
+  evaluate(expression: string, context: ExpressionContext): unknown {
     if (!this.cache.has(expression)) {
       this.cache.set(expression, this.compile(expression));
     }

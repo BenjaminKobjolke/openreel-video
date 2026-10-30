@@ -61,7 +61,7 @@ const TabsList = React.forwardRef<
     {...props}
   >
     <LayoutGroup id={layoutId}>
-      {children as any}
+      {children}
     </LayoutGroup>
   </TabsPrimitive.List>
 ))
