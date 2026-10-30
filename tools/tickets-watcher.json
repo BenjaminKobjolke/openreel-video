@@ -15,8 +15,7 @@
     "pnpm test",
     "pnpm --filter @openreel/studio test:e2e",
     "tools/analyze_changed_and_new_files.bat",
-    "tools/check_build.bat",
-    "tools\\analyze_code.bat"
+    "tools/check_build.bat"
   ],
   "analysis_commands_seen": {
     "scripts": [
@@ -43,12 +42,12 @@
     },
     "tools/check_build.bat": {
       "code_quality": "green"
-    },
-    "tools\\analyze_code.bat": {
-      "code_quality": "green"
     }
   },
   "analysis_command_kinds": {
+    "pnpm test": "test",
+    "pnpm --filter @openreel/studio test:e2e": "test",
+    "tools/analyze_changed_and_new_files.bat": "code_quality",
     "tools/check_build.bat": "code_quality"
   },
   "analysis_code_quality_timeout_seconds": 540,
