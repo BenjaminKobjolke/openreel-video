@@ -14,6 +14,9 @@ const CACHE_NAME = "openreel-v2";
 const STATIC_CACHE_NAME = "openreel-static-v2";
 const DYNAMIC_CACHE_NAME = "openreel-dynamic-v2";
 
+/* global importScripts */
+importScripts("messages-sw.js");
+
 /**
  * Static assets to cache on install
  * These are the core application files needed for offline functionality
@@ -111,7 +114,7 @@ self.addEventListener("activate", (event) => {
             .filter((name) => {
               // Delete old versions of our caches
               return (
-                name.startsWith("openreel-") &&
+                name.startsWith(`${CACHE_NAME.slice(0, CACHE_NAME.indexOf("-"))}-`) &&
                 name !== STATIC_CACHE_NAME &&
                 name !== DYNAMIC_CACHE_NAME
               );
@@ -251,70 +254,6 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-/**
- * Message event - handle messages from the main thread
- */
-self.addEventListener("message", (event) => {
-  const { type } = event.data || {};
-
-  switch (type) {
-    case "SKIP_WAITING":
-      self.skipWaiting();
-      break;
-
-    case "GET_CACHE_STATUS":
-      getCacheStatus().then((status) => {
-        event.ports[0].postMessage({ type: "CACHE_STATUS", payload: status });
-      });
-      break;
-
-    case "CLEAR_CACHE":
-      clearAllCaches().then(() => {
-        event.ports[0].postMessage({ type: "CACHE_CLEARED" });
-      });
-      break;
-
-    case "CHECK_ONLINE":
-      event.ports[0].postMessage({
-        type: "ONLINE_STATUS",
-        payload: { online: navigator.onLine },
-      });
-      break;
-  }
-});
-
-/**
- * Get cache status information
- */
-async function getCacheStatus() {
-  const cacheNames = await caches.keys();
-  let totalEntries = 0;
-
-  for (const name of cacheNames) {
-    if (name.startsWith("openreel-")) {
-      const cache = await caches.open(name);
-      const keys = await cache.keys();
-      totalEntries += keys.length;
-    }
-  }
-
-  return {
-    cacheNames: cacheNames.filter((n) => n.startsWith("openreel-")),
-    totalEntries,
-    version: CACHE_NAME,
-  };
-}
-
-/**
- * Clear all OpenReel caches
- */
-async function clearAllCaches() {
-  const cacheNames = await caches.keys();
-  await Promise.all(
-    cacheNames
-      .filter((name) => name.startsWith("openreel-"))
-      .map((name) => caches.delete(name))
-  );
-}
-
 console.log("[ServiceWorker] Script loaded");
+
+
